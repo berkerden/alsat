@@ -63,10 +63,20 @@ fi
 tamam "Bağımlılıklar kuruldu"
 
 printf '\n   Testler çalıştırılıyor...\n'
-if python -m pytest -q 2>&1 | tail -3; then
+# Çıktıyı dosyaya al: "| tail" kullanılırsa pipeline'ın çıkış kodu tail'inki
+# olur ve başarısız test hiç fark edilmez.
+TEST_LOG="$(mktemp)"
+if python -m pytest -q >"$TEST_LOG" 2>&1; then
+  tail -2 "$TEST_LOG"
   tamam "Testler geçti"
+  rm -f "$TEST_LOG"
 else
-  uyari "Bazı testler geçmedi. Çıktıyı Claude'a iletin."
+  tail -25 "$TEST_LOG"
+  hata "Testler geçmedi. Kurulum durduruldu."
+  printf '\nYukarıdaki çıktıyı Claude ile paylaşın.\n'
+  printf 'Önce şunu deneyin:  git pull && bash kurulum.sh\n'
+  rm -f "$TEST_LOG"
+  exit 1
 fi
 
 baslik "4/4  Fizibilite taraması"

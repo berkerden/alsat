@@ -9,13 +9,15 @@ secrets/
 *private_key*
 
 # Veri ve önbellek
-veri/
-data/
+# DİKKAT: Bu kurallar kök dizine sabitlenmiştir (başta /). Sabitlenmezse
+# src/albsat/data gibi kaynak klasörleri de yutulur.
+/veri/
+/data/
+/arsiv/
 *.parquet
 *.parquet.tmp
 *.db
 *.sqlite3
-arsiv/
 
 # Python
 __pycache__/
@@ -37,7 +39,7 @@ frontend/dist/
 
 # Loglar
 *.log
-logs/
+/logs/
 
 # İşletim sistemi
 .DS_Store
