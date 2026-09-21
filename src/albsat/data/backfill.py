@@ -14,7 +14,7 @@ Doğrulanmış uç nokta kısıtları (rest-api.md, 2026-09):
 
 from __future__ import annotations
 
-from typing import Protocol, Sequence
+from typing import Callable, Protocol, Sequence
 
 import pandas as pd
 
@@ -136,14 +136,22 @@ def repair(
     symbol: str,
     interval: str,
     now_ms: int | None = None,
+    on_progress: Callable[[int, int], None] | None = None,
 ) -> tuple[pd.DataFrame, int]:
-    """Boşlukları REST ile doldurur; ``(düzeltilmiş_veri, doldurulan_mum)``."""
+    """Boşlukları REST ile doldurur; ``(düzeltilmiş_veri, doldurulan_mum)``.
+
+    ``on_progress(tamamlanan, toplam)`` her boşluktan sonra çağrılır. Uzun
+    geçmişlerde yüzlerce boşluk olabildiği için çağıran tarafın ilerlemeyi
+    gösterebilmesi gerekir; aksi halde kullanıcı sessiz bir ekrana bakar.
+    """
     gaps = find_gaps(frame, interval=interval)
     if not gaps:
+        if on_progress is not None:
+            on_progress(0, 0)
         return frame, 0
 
     patches = [frame]
-    for start, end in gaps:
+    for index, (start, end) in enumerate(gaps, start=1):
         patch = fetch_range(
             source,
             symbol=symbol,
@@ -154,6 +162,8 @@ def repair(
         )
         if not patch.empty:
             patches.append(patch)
+        if on_progress is not None:
+            on_progress(index, len(gaps))
 
     merged = merge_frames(patches)
     return merged, int(len(merged) - len(frame))

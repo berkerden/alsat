@@ -110,3 +110,20 @@ def test_extend_to_now_bos_veride_bos_doner():
     )
     assert added == 0
     assert result.empty
+
+
+def test_repair_ilerlemeyi_bildirir():
+    frame = parse_klines([kline(i) for i in (0, 1, 5, 6, 10)], interval="1m")
+    olaylar = []
+    repair(frame, FakeSource(range(20)), symbol="X", interval="1m",
+           on_progress=lambda done, total: olaylar.append((done, total)))
+    # İki boşluk var; her biri bittiğinde bildirilmeli.
+    assert olaylar == [(1, 2), (2, 2)]
+
+
+def test_repair_bosluk_yoksa_sifir_bildirir():
+    frame = parse_klines([kline(i) for i in range(5)], interval="1m")
+    olaylar = []
+    repair(frame, FakeSource(range(20)), symbol="X", interval="1m",
+           on_progress=lambda done, total: olaylar.append((done, total)))
+    assert olaylar == [(0, 0)]

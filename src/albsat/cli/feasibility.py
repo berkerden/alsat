@@ -190,21 +190,40 @@ def main(argv: list[str] | None = None) -> int:
 
             frame = merge_frames(frames)
             if not frame.empty:
+                print(f"    {len(frame):,} mum birleştirildi, boşluklar aranıyor...",
+                      flush=True)
                 try:
-                    frame, filled = repair(frame, http, symbol=symbol, interval=interval)
+                    reported = {"total": None}
+
+                    def gap_progress(done, total, state=reported):
+                        if state["total"] is None:
+                            state["total"] = total
+                            if total:
+                                print(f"    {total} boşluk bulundu, REST ile "
+                                      "dolduruluyor...", flush=True)
+                            else:
+                                print("    boşluk yok", flush=True)
+                        # Uzun listelerde her adımı basmak gürültü olur.
+                        if total and (done % 25 == 0 or done == total):
+                            print(f"      {done}/{total}", flush=True)
+
+                    frame, filled = repair(frame, http, symbol=symbol,
+                                           interval=interval, now_ms=now_ms,
+                                           on_progress=gap_progress)
+                    print("    son mumlar borsadan alınıyor...", flush=True)
                     frame, extended = extend_to_now(
                         frame, http, symbol=symbol, interval=interval, now_ms=now_ms
                     )
                     if filled or extended:
-                        print(f"  {symbol} {interval}: {filled + extended} mum "
-                              "REST ile tamamlandı")
+                        print(f"    {filled + extended:,} mum REST ile tamamlandı",
+                              flush=True)
                 except (urllib.error.URLError, HttpError, OSError) as error:
                     print(f"  ! {symbol} {interval}: boşluklar doldurulamadı ({error})",
                           file=sys.stderr)
                 store.upsert(frame, symbol=symbol, interval=interval)
 
             report = check_quality(frame, symbol=symbol, interval=interval)
-            print("  " + report.summary_tr())
+            print("  " + report.summary_tr(), flush=True)
 
             trip = round_trip_for(
                 flat_table(symbol, maker, taker),
