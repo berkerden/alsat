@@ -29,15 +29,27 @@ Tarama iki liste üretir:
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 import pandas as pd
 
 from albsat.backtest.benchmarks import RandomComparison, compare_with_random_entries
 from albsat.features import FeatureSet
-from albsat.research.eventstudy import EXIT_TARGET, EventSummary, OutcomeTable, summarize
-from albsat.research.stats import BootstrapResult, benjamini_hochberg, bootstrap_mean
+from albsat.research.eventstudy import (
+    EXIT_TARGET,
+    EventSummary,
+    OutcomeTable,
+    independent_indices,
+    summarize,
+)
+from albsat.research.stats import (
+    BootstrapResult,
+    benjamini_hochberg,
+    bootstrap_mean,
+    p_value_floor,
+    required_iterations,
+)
 from albsat.research.walkforward import (
     Split,
     StabilityRow,
@@ -96,6 +108,8 @@ class PatternResult:
     walk_forward_mean_pct: float
     walk_forward_positive_share: float
     warnings_tr: tuple[str, ...] = field(default_factory=tuple)
+    #: Kabul kararını veren örneklem: ayrılmış dönemdeki üst üste binmeyen olaylar.
+    inference_events: int = 0
 
     @property
     def stable_share(self) -> float:
@@ -136,6 +150,25 @@ class ScanResult:
     @property
     def accepted_count(self) -> int:
         return sum(1 for p in self.buy_patterns if p.accepted)
+
+    @property
+    def best_raw_p_value(self) -> float:
+        """İncelenen örüntüler içindeki en küçük düzeltilmemiş p-değeri.
+
+        "Bulunamadı" sonucunu okurken en önemli sayı budur: en iyi aday
+        eşiğin hemen yanında mıydı, yoksa çok mu uzaktaydı?
+        """
+        values = [
+            item.bootstrap.p_value for item in self.buy_patterns + self.avoid_patterns
+        ]
+        return min(values) if values else 1.0
+
+    @property
+    def acceptance_p_threshold(self) -> float:
+        """Tek bir örüntünün kabul edilmesi için gereken en küçük p-değeri."""
+        if self.candidates < 1:
+            return 0.0
+        return self.config.alpha / self.candidates
 
 
 def _label(features: tuple[str, ...], feature_set: FeatureSet) -> str:
@@ -235,15 +268,17 @@ def _warnings(
     stability: list[StabilityRow],
     walk_forward_positive: float,
     *,
+    inference_events: int,
     min_events: int,
     direction: str,
 ) -> tuple[str, ...]:
     """SPEC.md §4.2: aşırı uyum riskini açıkça yaz."""
     notes: list[str] = []
-    if summary.independent_events < min_events:
+    if inference_events < min_events:
         notes.append(
-            f"Bu örüntü az bağımsız örneğe dayanıyor "
-            f"(üst üste binmeyen olay: {summary.independent_events})."
+            f"Kabul kararı az bağımsız örneğe dayanıyor (ayrılmış dönemde "
+            f"üst üste binmeyen olay: {inference_events}, "
+            f"tüm seride: {summary.independent_events})."
         )
     test = next((s for s in result_splits if s.name == "test"), None)
     train = next((s for s in result_splits if s.name == "eğitim"), None)
@@ -271,6 +306,7 @@ def _evaluate(
     open_time: np.ndarray,
     splits: tuple[Split, Split, Split],
     folds: list[tuple[Split, Split]],
+    holdout: np.ndarray,
     config: ScanConfig,
     direction: str,
 ) -> PatternResult:
@@ -278,14 +314,21 @@ def _evaluate(
     selected = mask & outcomes.eligible
     summary = summarize(outcomes, mask)
 
-    # İstatistiksel test üst üste binmeyen olaylarla yapılır: aynı fiyat
-    # hareketini birden çok kez saymak güven aralığını sahte biçimde daraltır.
-    from albsat.research.eventstudy import independent_indices
-
-    independent = independent_indices(selected, outcomes.config.horizon)
-    sample = values[independent] if independent.size else np.zeros(0)
-    if direction == "kaçın":
-        sample = -sample
+    # Kabul kararını veren p-değeri **yalnızca ayrılmış dönemden** hesaplanır.
+    # Adaylar eğitim dönemine bakılarak seçildi; aynı veriyle sınamak seçimin
+    # kendisini kanıt sayardı. Tüm seriden hesaplanan sayılar raporda bağlam
+    # olarak duruyor, kararı vermiyor.
+    #
+    # Test üst üste binmeyen olaylarla yapılır: aynı fiyat hareketini birden
+    # çok kez saymak güven aralığını sahte biçimde daraltır.
+    sample = _inference_sample(
+        features,
+        feature_set=feature_set,
+        outcomes=outcomes,
+        values=values,
+        direction=direction,
+        holdout=holdout,
+    )
     bootstrap = bootstrap_mean(
         sample, iterations=config.bootstrap_iterations, seed=config.seed
     )
@@ -295,7 +338,8 @@ def _evaluate(
     )
 
     random = compare_with_random_entries(
-        outcomes, mask, repeats=config.random_repeats, seed=config.seed
+        outcomes, mask, repeats=config.random_repeats, seed=config.seed,
+        pool_mask=holdout,
     )
 
     stability = stability_by_period(
@@ -323,6 +367,7 @@ def _evaluate(
         random,
         stability,
         walk_share,
+        inference_events=int(sample.size),
         min_events=config.min_events,
         direction=direction,
     )
@@ -341,7 +386,80 @@ def _evaluate(
         walk_forward_mean_pct=walk_mean,
         walk_forward_positive_share=walk_share,
         warnings_tr=notes,
+        inference_events=int(sample.size),
     )
+
+
+def _inference_sample(
+    features: tuple[str, ...],
+    *,
+    feature_set: FeatureSet,
+    outcomes: OutcomeTable,
+    values: np.ndarray,
+    direction: str,
+    holdout: np.ndarray,
+) -> np.ndarray:
+    """Bir örüntünün istatistiksel teste giren örneklemi.
+
+    Yalnızca **ayrılmış dönem** (doğrulama + test) ve yalnızca üst üste
+    binmeyen olaylar. Keşif eğitim döneminde yapıldığı için sınama oraya
+    dokunmaz.
+    """
+    selected = _mask_for(features, feature_set) & outcomes.eligible & holdout
+    independent = independent_indices(selected, outcomes.config.horizon)
+    if independent.size == 0:
+        return np.zeros(0)
+    sample = np.asarray(values[independent], dtype=float)
+    return -sample if direction == "kaçın" else sample
+
+
+def _refine_floor_pvalues(
+    results: list[PatternResult],
+    *,
+    feature_set: FeatureSet,
+    outcomes: OutcomeTable,
+    values: np.ndarray,
+    direction: str,
+    holdout: np.ndarray,
+    total_tests: int,
+    config: ScanConfig,
+) -> list[PatternResult]:
+    """Tabana oturan p-değerlerini daha yüksek çözünürlükle yeniden hesaplar.
+
+    Ucuz turda p-değeri ``1/(yineleme+1)`` tabanına dayanmış örüntüler, o
+    tabanın altında gerçekte ne kadar küçük olduklarını söyleyemez. Düzeltme
+    eşiği tabanın altındaysa bu örüntüler hak ettikleri halde reddedilir.
+    Burada yalnızca o örüntüler, eşiği çözebilecek kadar yinelemeyle yeniden
+    ölçülüyor.
+
+    Normal durumda hiçbir örüntü tabana oturmaz ve bu tur hiç çalışmaz;
+    maliyeti yalnızca gerçekten güçlü bir bulgu varken ödenir.
+    """
+    needed = required_iterations(total_tests, config.alpha)
+    if needed <= config.bootstrap_iterations:
+        return results
+
+    floor = p_value_floor(config.bootstrap_iterations)
+    refined: list[PatternResult] = []
+    for item in results:
+        if item.bootstrap.p_value > floor:
+            refined.append(item)
+            continue
+        sample = _inference_sample(
+            item.features,
+            feature_set=feature_set,
+            outcomes=outcomes,
+            values=values,
+            direction=direction,
+            holdout=holdout,
+        )
+        refined.append(
+            replace(
+                item,
+                bootstrap=bootstrap_mean(sample, iterations=needed, seed=config.seed),
+            )
+        )
+    return refined
 
 
 def _apply_correction(
@@ -353,22 +471,10 @@ def _apply_correction(
     accepted, q_values = benjamini_hochberg(p_values, alpha, total_tests=total_tests)
     corrected = []
     for item, is_accepted, q_value in zip(results, accepted, q_values, strict=True):
+        # replace(): alan alan kopyalamak, sonradan eklenen bir alanı sessizce
+        # varsayılana düşürür. Böyle bir hata bir kez yaşandı.
         corrected.append(
-            PatternResult(
-                features=item.features,
-                label_tr=item.label_tr,
-                direction=item.direction,
-                full=item.full,
-                splits=item.splits,
-                bootstrap=item.bootstrap,
-                q_value=float(q_value),
-                accepted=bool(is_accepted),
-                random=item.random,
-                stability=item.stability,
-                walk_forward_mean_pct=item.walk_forward_mean_pct,
-                walk_forward_positive_share=item.walk_forward_positive_share,
-                warnings_tr=item.warnings_tr,
-            )
+            replace(item, q_value=float(q_value), accepted=bool(is_accepted))
         )
     corrected.sort(key=lambda r: (not r.accepted, r.q_value))
     return tuple(corrected)
@@ -396,6 +502,9 @@ def scan(
     # Eleme yalnızca EĞİTİM döneminde yapılır; doğrulama ve test dokunulmadan
     # kalır, böylece sonlardaki sayılar gerçekten "görülmemiş veri"dir.
     train = splits[0].mask(count)
+    # Keşif eğitim döneminde, sınama ayrılmış dönemde. İkisi aynı veriyi
+    # kullanırsa seçimin kendisi kanıt sayılır ve p-değeri anlamını yitirir.
+    holdout = ~train
     usable = outcomes.eligible & train
     net = outcomes.net_pct
     forward = outcomes.forward_pct
@@ -432,6 +541,7 @@ def scan(
                     open_time=open_time,
                     splits=splits,
                     folds=folds,
+                    holdout=holdout,
                     config=config,
                     direction=direction,
                 )
@@ -442,6 +552,17 @@ def scan(
 
     buy_results = evaluate_list(buy_candidates, net, "al")
     avoid_results = evaluate_list(avoid_candidates, forward, "kaçın")
+
+    # Çözünürlük turu: p-değeri tabana dayanmış örüntüler varsa onları,
+    # düzeltme eşiğini çözebilecek yinelemeyle yeniden ölç.
+    buy_results = _refine_floor_pvalues(
+        buy_results, feature_set=feature_set, outcomes=outcomes, values=net,
+        direction="al", total_tests=total_candidates, config=config, holdout=holdout,
+    )
+    avoid_results = _refine_floor_pvalues(
+        avoid_results, feature_set=feature_set, outcomes=outcomes, values=forward,
+        direction="kaçın", total_tests=total_candidates, config=config, holdout=holdout,
+    )
 
     return ScanResult(
         symbol=symbol,

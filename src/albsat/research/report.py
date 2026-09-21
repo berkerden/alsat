@@ -61,6 +61,11 @@ def pattern_block(pattern: PatternResult, rank: int) -> str:
         f"ortalama {summary.bars_held_mean:.1f} mum"
     )
     lines.append(f"   {pattern.bootstrap.summary_tr}, düzeltilmiş q={pattern.q_value:.4f}")
+    lines.append(
+        f"   bu p-değeri yalnızca ayrılmış dönemden hesaplandı "
+        f"({pattern.inference_events:,} üst üste binmeyen olay); keşif eğitim "
+        f"döneminde yapıldı"
+    )
 
     split_text = " · ".join(
         f"{item.name} {item.events:,} olay {_pct(item.net_mean_pct)}"
@@ -107,6 +112,19 @@ def scan_block(result: ScanResult, feature_set: FeatureSet, *, top: int = 5) -> 
         lines.append(
             f"Maliyet eşiğini geçemediği için elenen mum: "
             f"{result.outcomes.rejected_by_threshold:,} (SPEC.md §4.3)."
+        )
+    lines.append("")
+
+    lines.append(
+        f"En küçük ham p-değeri: {result.best_raw_p_value:.5f} "
+        f"(tek bir örüntünün kabul edilmesi için gereken: "
+        f"{result.acceptance_p_threshold:.5f})."
+    )
+    distance = result.best_raw_p_value / result.acceptance_p_threshold
+    if result.acceptance_p_threshold > 0 and distance > 1:
+        lines.append(
+            f"En iyi aday bu eşiğin {distance:,.0f} katı uzağında — "
+            "yakın bir kaçırma değil."
         )
     lines.append("")
 

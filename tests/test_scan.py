@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from veri_uret import planted_signal, random_walk
+from veri_uret import planted_signal, poison_future, random_walk
 
 from albsat.core.costs import minimum_meaningful_target, round_trip_for
 from albsat.core.fees import Liquidity, flat_table
@@ -117,22 +117,37 @@ def test_duzeltme_denenen_tum_adaylar_uzerinden():
 
 
 def test_kesif_yalnizca_egitim_doneminde_yapiliyor():
-    """Aday üretimi eğitim dilimine bakar; doğrulama ve test dokunulmaz kalır.
+    """Aday üretimi yalnızca eğitim dilimine bakar; sonrası onu etkilemez.
 
-    Kenar yalnızca serinin SON çeyreğine konursa tarama onu aday olarak bile
-    görmemeli: o bölge eğitim diliminde değildir.
+    Eğitim dilimi bittikten sonraki her şeyi tanınmaz hale getirip taramayı
+    yeniden çalıştırıyoruz. Keşif o bölgeye bakmıyorsa aday sayısı ve
+    ayrıntılı incelemeye alınan örüntüler harfi harfine aynı çıkmalı. Tek bir
+    farklılık, seçim aşamasının göremeyeceği veriye baktığı anlamına gelir.
+
+    Kabul kararı ise tam tersi: o **yalnızca** bozulan bölgeden hesaplanır.
+    Bu yüzden burada kabul listesi değil, keşfin kendisi karşılaştırılıyor.
     """
     frame, _ = planted_signal(12_000, drift_pct=0.0)
-    late = frame.copy()
-    start = int(len(frame) * 0.80)
-    # Son %20'de her mumu yukarı it; eğitim dilimi bundan habersiz.
-    late.loc[late.index[start:], "close"] = frame["close"].to_numpy()[start:] * 1.02
-    late.loc[late.index[start:], "high"] = late["high"].to_numpy()[start:] * 1.03
+    horizon = 3
+    # Eğitim dilimi %50'de bitiyor; kesim noktası hedef penceresi kadar sonra,
+    # yoksa son eğitim mumlarının sonucu bozulan bölgeden okunurdu.
+    cut = int(len(frame) * 0.50) + horizon
+    poisoned = poison_future(frame, cut)
 
-    features, outcomes = prepare(late)
-    result = scan(late, features, outcomes, symbol="BTCUSDT", interval="15m", config=FAST)
-    accepted = [pattern for pattern in result.buy_patterns if pattern.accepted]
-    assert accepted == [], "Yalnızca test döneminde olan hareket keşfe sızmış"
+    clean = scan(
+        frame, *prepare(frame, horizon=horizon),
+        symbol="BTCUSDT", interval="15m", config=FAST,
+    )
+    dirty = scan(
+        poisoned, *prepare(poisoned, horizon=horizon),
+        symbol="BTCUSDT", interval="15m", config=FAST,
+    )
+
+    assert dirty.candidates == clean.candidates, "Aday sayısı geleceğe bağlı"
+    for name in ("buy_patterns", "avoid_patterns"):
+        found = {pattern.features for pattern in getattr(dirty, name)}
+        expected = {pattern.features for pattern in getattr(clean, name)}
+        assert found == expected, f"{name}: keşif bozulan bölgeden etkilendi"
 
 
 def test_az_veriyle_cokmuyor():

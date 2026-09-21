@@ -66,6 +66,7 @@ def compare_with_random_entries(
     *,
     repeats: int = 2000,
     seed: int = 20260921,
+    pool_mask: np.ndarray | None = None,
 ) -> RandomComparison:
     """Örüntünün ortalamasını, aynı büyüklükteki rastgele örneklerle kıyaslar.
 
@@ -74,8 +75,13 @@ def compare_with_random_entries(
     ortalaması bu dağılımın neresinde? Sağ uçtaysa zamanlama bilgi taşıyor
     demektir; ortalardaysa örüntü rastgeleden ayırt edilemiyordur.
     """
-    selected = np.asarray(mask, dtype=bool) & outcomes.eligible
-    pool = outcomes.net_pct[outcomes.eligible]
+    eligible = outcomes.eligible
+    if pool_mask is not None:
+        # Kıyas, örüntünün ölçüldüğü dönemle aynı dönemden yapılmalı; yoksa
+        # farklı piyasa koşullarını karşılaştırmış oluruz.
+        eligible = eligible & np.asarray(pool_mask, dtype=bool)
+    selected = np.asarray(mask, dtype=bool) & eligible
+    pool = outcomes.net_pct[eligible]
     pool = pool[np.isfinite(pool)]
     size = int(selected.sum())
 

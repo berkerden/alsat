@@ -120,6 +120,37 @@ def bootstrap_mean(
     return BootstrapResult(observed, float(low), float(high), p_value, iterations)
 
 
+#: Tek bir örüntünün kabul edilebilmesi için gereken yineleme sayısında güvenlik payı.
+RESOLUTION_HEADROOM = 2
+#: Yineleme sayısının üst sınırı; bunun ötesi hesaplama süresine değmez.
+MAX_RESOLUTION_ITERATIONS = 200_000
+
+
+def required_iterations(total_tests: int, alpha: float = 0.10) -> int:
+    """Bir örüntünün **tek başına** kabul edilebilmesi için gereken yineleme sayısı.
+
+    Yeniden örneklemeyle bulunan p-değerinin alt sınırı ``1/(yineleme+1)``'dir:
+    hiçbir yeniden örnekleme gözlenen ortalamaya ulaşamasa bile p sıfır olmaz.
+    Benjamini–Hochberg ise en küçük p-değerinden ``alpha/m`` eşiğini geçmesini
+    ister.
+
+    İkisi çarpışabilir. 553 aday ve alpha=0,10 ile eşik 0,000181'dir; 1.500
+    yinelemenin üretebildiği en küçük p ise 0,000666. Yani gerçekten güçlü
+    **tek** bir örüntü, ne kadar güçlü olursa olsun, kabul edilemezdi —
+    yalnızca dört örüntü aynı anda tabana oturursa liste kabul edilirdi.
+    Sessiz bir kör nokta; bu fonksiyon onu sayıya çevirir.
+    """
+    if total_tests < 1 or alpha <= 0:
+        return 0
+    needed = int(math.ceil(RESOLUTION_HEADROOM * total_tests / alpha))
+    return min(needed, MAX_RESOLUTION_ITERATIONS)
+
+
+def p_value_floor(iterations: int) -> float:
+    """Bu yineleme sayısıyla üretilebilecek en küçük p-değeri."""
+    return 1.0 / (iterations + 1) if iterations > 0 else 1.0
+
+
 def benjamini_hochberg(
     p_values: np.ndarray, alpha: float = 0.10, *, total_tests: int | None = None
 ) -> tuple[np.ndarray, np.ndarray]:

@@ -143,14 +143,14 @@ SPEC.md §4.2'nin "zorunlu" dediği maddelerin karşılığı:
 | Eğitim / doğrulama / test | Zamana göre %50 / %25 / %25, karıştırma yok |
 | Walk-forward | Genişleyen pencereyle 4 katman; her katmanda eğitim testin öncesinde |
 | Minimum örnek (n ≥ 50) | Varsayılan eşik; ayrıca **üst üste binmeyen** olay sayısı da raporlanıyor |
-| Bootstrap güven aralığı | Yeniden örneklemeyle ortalama ve tek yönlü p-değeri |
+| Bootstrap güven aralığı | Yeniden örneklemeyle ortalama ve tek yönlü p-değeri, **yalnızca ayrılmış dönemden** |
 | Çoklu test düzeltmesi | Benjamini–Hochberg, **denenen tüm adaylar** üzerinden |
 | Deflated Sharpe | Bailey & López de Prado; `research/stats.py` |
 | Rejim ve dönem kararlılığı | Çeyreklik kırılım + oynaklık rejimi özellikleri |
 | Rastgele giriş ve al-ve-tut kıyası | Her raporda, bulgu çıkmasa bile |
 | Aşırı uyum uyarıları | Her örüntü kartında açık cümlelerle |
 
-Üç karar ayrıca açıklanmayı hak ediyor:
+Beş karar ayrıca açıklanmayı hak ediyor:
 
 **Neden bootstrap, t-testi değil?** İşlem getirileri normal dağılmaz: stop
 kayıpları kırpar, hedefler kârı sınırlar, kuyruklar kalındır. t-testi bu
@@ -168,6 +168,23 @@ kendisi de bir seçimdir. Düzeltmeyi yalnızca incelenen 100 aday üzerinden
 yapmak, elemeyi bedavaya getirir ve sonucu iyimser gösterirdi. Elenenler tek
 yönlü testte zaten en büyük p-değerlerine sahip olduğu için bu yaklaşım
 matematiksel olarak da güvenli taraftadır.
+
+**Neden keşif ve sınama ayrı dönemlerde?** Adaylar yalnızca **eğitim**
+dilimine (ilk %50) bakılarak seçiliyor. Kabul kararını veren p-değeri ise
+yalnızca **ayrılmış dönemden** (doğrulama + test, son %50) hesaplanıyor. İkisi
+aynı veriyi kullanırsa seçimin kendisi kanıt sayılır: bir örüntü zaten "eğitim
+döneminde iyi göründüğü için" seçilmiştir, aynı veride tekrar iyi görünmesi
+yeni bir bilgi değildir. Tüm seriden hesaplanan sayılar raporda bağlam olarak
+duruyor ama kararı vermiyor. Bunun bedeli test gücünde düşüş — karar yarım
+veriye dayanıyor — ama yanlış bir "buldum"un bedeli daha ağır.
+
+**Neden yineleme sayısı adaya göre değişiyor?** Bootstrap p-değerinin
+ölçebileceği en küçük değer `1/(yineleme+1)`. Düzeltme eşiği bundan küçükse,
+gerçekten güçlü bir örüntü hak ettiği halde reddedilir — çünkü p-değeri
+sıfıra ne kadar yakın olduğunu söyleyemez. Motor bu durumu tanıyıp yalnızca
+tabana dayanan örüntüleri eşiği çözecek yinelemeyle yeniden ölçüyor
+(`stats.required_iterations`). Normalde hiçbir örüntü tabana oturmaz ve bu
+tur hiç çalışmaz; maliyeti yalnızca gerçekten güçlü bir bulgu varken ödenir.
 
 ---
 
@@ -197,9 +214,11 @@ Ayrıca:
 Motorun **bulmaması gerekeni bulmadığı** da test ediliyor, ki bu belki daha
 önemli: rastgele yürüyüş verisinde, maliyet de varken, düzeltmeden geçen
 örüntü çıkmamalı. Ve tersi: içine bilerek bir kenar konmuş veride o kural
-bulunabilmeli. Üçüncü bir test, kenar yalnızca serinin **test dönemine**
-konulduğunda taramanın onu keşfedememesi gerektiğini doğruluyor — eğitim
-dilimine sızma olmadığının kanıtı.
+bulunabilmeli. Üçüncü bir test keşif ile sınamanın gerçekten ayrı dönemlerde
+durduğunu ölçüyor: eğitim dilimi bittikten sonraki her şey tanınmaz hale
+getirilip tarama yeniden çalıştırılıyor, aday sayısı ve ayrıntılı incelemeye
+alınan örüntüler harfi harfine aynı çıkmalı. Testin kendi gücü de kontrol
+edildi — eleme tüm seriye bakacak şekilde bozulduğunda test hemen düşüyor.
 
 ---
 
