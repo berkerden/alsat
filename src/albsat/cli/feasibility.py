@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import sys
+import urllib.error
 from pathlib import Path
 
 from albsat.core.costs import minimum_meaningful_target, round_trip_for
@@ -33,7 +34,7 @@ from albsat.data import vision
 from albsat.data.backfill import merge_frames, repair
 from albsat.data.klines import check_quality
 from albsat.data.store import KlineStore
-from albsat.exchange.http import PublicHttp
+from albsat.exchange.http import HttpError, PublicHttp
 from albsat.research.feasibility import render_table, scan_interval
 
 #: Binance'in genel listelenen spot oranları — yalnızca varsayılan tahmin.
@@ -64,6 +65,23 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _network_failure(error: Exception) -> int:
+    """Ağ hatasını yığın izi yerine anlaşılır bir mesajla bildirir."""
+    print(
+        "\nBinance'e bağlanılamadı.\n"
+        f"Hata: {error}\n\n"
+        "Kontrol edilecekler:\n"
+        "  1. İnternet bağlantınız çalışıyor mu?\n"
+        "  2. Kurumsal bir ağ, VPN veya güvenlik duvarı arkasında mısınız?\n"
+        "     Bazı ağlar api.binance.com adresini engelliyor.\n"
+        "  3. Binance'in bulunduğunuz ülkede erişilebilir olduğundan emin olun.\n\n"
+        "Bu adım yalnızca herkese açık piyasa verisini okur; API anahtarı "
+        "gerektirmez.",
+        file=sys.stderr,
+    )
+    return 2
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
@@ -81,7 +99,10 @@ def main(argv: list[str] | None = None) -> int:
     start = end - dt.timedelta(days=args.gun)
 
     print("Sembol filtreleri çekiliyor...")
-    rules = parse_exchange_info(http.exchange_info(args.semboller))
+    try:
+        rules = parse_exchange_info(http.exchange_info(args.semboller))
+    except (urllib.error.URLError, HttpError, OSError) as error:
+        return _network_failure(error)
     for symbol in args.semboller:
         rule = rules.get(symbol)
         if rule is None:
@@ -113,9 +134,13 @@ def main(argv: list[str] | None = None) -> int:
 
             frame = merge_frames(frames)
             if not frame.empty:
-                frame, filled = repair(frame, http, symbol=symbol, interval=interval)
-                if filled:
-                    print(f"  {symbol} {interval}: {filled} mum REST ile tamamlandı")
+                try:
+                    frame, filled = repair(frame, http, symbol=symbol, interval=interval)
+                    if filled:
+                        print(f"  {symbol} {interval}: {filled} mum REST ile tamamlandı")
+                except (urllib.error.URLError, HttpError, OSError) as error:
+                    print(f"  ! {symbol} {interval}: boşluklar doldurulamadı ({error})",
+                          file=sys.stderr)
                 store.upsert(frame, symbol=symbol, interval=interval)
 
             report = check_quality(frame, symbol=symbol, interval=interval)
