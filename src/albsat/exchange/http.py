@@ -23,7 +23,10 @@ USER_AGENT = "albsat/0.1 (+https://github.com/)"
 
 class HttpError(RuntimeError):
     def __init__(self, status: int, url: str, body: str) -> None:
-        super().__init__(f"HTTP {status} — {url}\n{body[:400]}")
+        # 404'te sunucunun XML gövdesini basmak gereksiz gürültü; dosyanın
+        # bulunamadığını bilmek yeterli.
+        detail = "" if status == 404 else f"\n{body[:400]}"
+        super().__init__(f"HTTP {status} — {url}{detail}")
         self.status = status
         self.url = url
         self.body = body

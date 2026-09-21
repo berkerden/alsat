@@ -33,7 +33,7 @@ from albsat.core.fees import Liquidity, flat_table
 from albsat.core.filters import parse_exchange_info
 from albsat.core.tls import CERTIFICATE_HELP, enable_system_trust
 from albsat.data import vision
-from albsat.data.backfill import merge_frames, repair
+from albsat.data.backfill import extend_to_now, merge_frames, repair
 from albsat.data.klines import check_quality
 from albsat.data.store import KlineStore
 from albsat.exchange.http import HttpError, PublicHttp
@@ -119,6 +119,13 @@ def main(argv: list[str] | None = None) -> int:
     end = dt.date.today()
     start = end - dt.timedelta(days=args.gun)
 
+    # Sunucu saati: kapanmamış mumu doğru işaretlemek için borsadan alınır,
+    # yerel saatten değil (SPEC.md §4.1).
+    try:
+        now_ms = http.server_time()
+    except (urllib.error.URLError, HttpError, OSError):
+        now_ms = int(dt.datetime.now(dt.timezone.utc).timestamp() * 1000)
+
     print("Sembol filtreleri çekiliyor...")
     try:
         rules = parse_exchange_info(http.exchange_info(args.semboller))
@@ -141,6 +148,7 @@ def main(argv: list[str] | None = None) -> int:
     for symbol in args.semboller:
         for interval in args.periyotlar:
             frames = []
+            not_published = 0
             for ref in vision.plan_archives(symbol, interval, start, end):
                 try:
                     frames.append(
@@ -150,15 +158,30 @@ def main(argv: list[str] | None = None) -> int:
                             verify=not args.dogrulama_yok,
                         )
                     )
-                except Exception as error:  # arşiv henüz yayımlanmamış olabilir
-                    print(f"  - {ref.filename}: {error}", file=sys.stderr)
+                except HttpError as error:
+                    if error.status == 404:
+                        # Son günlerin arşivi henüz yayımlanmamış olabilir;
+                        # bu normaldir, eksik mumlar REST ile tamamlanır.
+                        not_published += 1
+                    else:
+                        print(f"  ! {ref.filename}: {error}", file=sys.stderr)
+                except Exception as error:
+                    print(f"  ! {ref.filename}: {error}", file=sys.stderr)
+
+            if not_published:
+                print(f"  {symbol} {interval}: {not_published} günlük arşiv henüz "
+                      "yayımlanmamış, o aralık REST ile tamamlanacak")
 
             frame = merge_frames(frames)
             if not frame.empty:
                 try:
                     frame, filled = repair(frame, http, symbol=symbol, interval=interval)
-                    if filled:
-                        print(f"  {symbol} {interval}: {filled} mum REST ile tamamlandı")
+                    frame, extended = extend_to_now(
+                        frame, http, symbol=symbol, interval=interval, now_ms=now_ms
+                    )
+                    if filled or extended:
+                        print(f"  {symbol} {interval}: {filled + extended} mum "
+                              "REST ile tamamlandı")
                 except (urllib.error.URLError, HttpError, OSError) as error:
                     print(f"  ! {symbol} {interval}: boşluklar doldurulamadı ({error})",
                           file=sys.stderr)

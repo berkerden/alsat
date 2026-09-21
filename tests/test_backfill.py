@@ -72,3 +72,41 @@ def test_fetch_range_bos_kaynakta_bos_doner():
 
     assert fetch_range(Empty(), symbol="X", interval="1m",
                        start_time=BASE, end_time=BASE + STEP).empty
+
+
+def test_extend_to_now_arsivin_bittigi_yerden_devam_eder():
+    from albsat.data.backfill import extend_to_now
+
+    # Arşiv 0..4 arasını kapsıyor; borsada 0..9 var.
+    frame = parse_klines([kline(i) for i in range(5)], interval="1m")
+    source = FakeSource(range(10))
+    extended, added = extend_to_now(
+        frame, source, symbol="X", interval="1m", now_ms=BASE + 9 * STEP
+    )
+    assert added == 5
+    assert int(extended["open_time"].max()) == BASE + 9 * STEP
+    # İlk istek, elimizdeki son mumun bir sonrasından başlamalı.
+    assert source.calls[0][0] == BASE + 5 * STEP
+
+
+def test_extend_to_now_guncel_veride_istek_yapmaz():
+    from albsat.data.backfill import extend_to_now
+
+    frame = parse_klines([kline(i) for i in range(5)], interval="1m")
+    source = FakeSource(range(10))
+    _, added = extend_to_now(
+        frame, source, symbol="X", interval="1m", now_ms=BASE + 4 * STEP
+    )
+    assert added == 0
+    assert source.calls == []
+
+
+def test_extend_to_now_bos_veride_bos_doner():
+    from albsat.data.backfill import extend_to_now
+
+    empty = parse_klines([], interval="1m")
+    result, added = extend_to_now(
+        empty, FakeSource(range(10)), symbol="X", interval="1m", now_ms=BASE
+    )
+    assert added == 0
+    assert result.empty

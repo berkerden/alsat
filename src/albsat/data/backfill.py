@@ -157,3 +157,35 @@ def repair(
 
     merged = merge_frames(patches)
     return merged, int(len(merged) - len(frame))
+
+
+def extend_to_now(
+    frame: pd.DataFrame,
+    source: KlineSource,
+    *,
+    symbol: str,
+    interval: str,
+    now_ms: int,
+) -> tuple[pd.DataFrame, int]:
+    """Verinin bittiği yerden şu ana kadar olan mumları çeker.
+
+    Arşivler ancak gün bittikten sonra yayımlandığı için yalnızca arşivle
+    beslenen bir veri seti dün gece yarısında biter. Bu fonksiyon aradaki
+    farkı REST ile kapatır; "veri eksiksiz ve canlı" olmasının koşuludur.
+
+    ``(genişletilmiş_veri, eklenen_mum_sayısı)`` döndürür.
+    """
+    if frame.empty:
+        return frame, 0
+    step = interval_ms(interval)
+    start_time = int(frame["open_time"].max()) + step
+    if start_time > now_ms:
+        return frame, 0
+    tail = fetch_range(
+        source, symbol=symbol, interval=interval,
+        start_time=start_time, end_time=now_ms, now_ms=now_ms,
+    )
+    if tail.empty:
+        return frame, 0
+    merged = merge_frames([frame, tail])
+    return merged, int(len(merged) - len(frame))

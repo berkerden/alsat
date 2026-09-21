@@ -83,13 +83,29 @@ def day_range(start: date, end: date) -> Iterator[str]:
 
 
 def plan_archives(
-    symbol: str, interval: str, start: date, end: date
+    symbol: str,
+    interval: str,
+    start: date,
+    end: date,
+    *,
+    today: date | None = None,
 ) -> list[ArchiveRef]:
     """İndirme planı: tam aylar aylık arşivden, son kısmi ay günlükten.
 
-    Binance aylık arşivi ancak ay bittikten sonra yayımlar; içinde
-    bulunulan ay için günlük dosyalara düşülür.
+    Binance bir günün arşivini ancak o gün bittikten sonra yayımlar; aylık
+    arşivi de ay bittikten sonra. Bu yüzden **bugünün** günlük dosyası
+    plana hiç alınmaz — istenirse kesin olarak 404 döner. Bugüne ait mumlar
+    REST ile çekilir (bkz. ``albsat.data.backfill``).
+
+    Dünün dosyası plana alınır ama yayımlanması birkaç saat gecikebilir;
+    çağıran taraf 404'ü normal karşılamalıdır.
     """
+    today = date.today() if today is None else today
+    # Bugün ve sonrası için arşiv yok.
+    end = min(end, today - timedelta(days=1))
+    if end < start:
+        return []
+
     refs: list[ArchiveRef] = []
     last_full_month_end = end.replace(day=1) - timedelta(days=1)
 

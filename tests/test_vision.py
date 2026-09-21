@@ -42,13 +42,30 @@ def test_url_kalibi_dokumanla_uyusur():
 
 
 def test_plan_tam_aylari_aylik_son_ayi_gunluk_alir():
-    plan = plan_archives("BTCUSDT", "1m", dt.date(2026, 6, 15), dt.date(2026, 9, 21))
+    # today açıkça verilir; aksi halde test gerçek tarihe göre değişirdi.
+    plan = plan_archives("BTCUSDT", "1m", dt.date(2026, 6, 15), dt.date(2026, 9, 21),
+                         today=dt.date(2026, 9, 21))
     monthly = [r for r in plan if r.granularity == "monthly"]
     daily = [r for r in plan if r.granularity == "daily"]
     assert [r.period for r in monthly] == ["2026-06", "2026-07", "2026-08"]
-    assert len(daily) == 21
+    # Bugünün (21'inin) arşivi henüz yayımlanmadığı için plana girmez.
+    assert len(daily) == 20
     assert daily[0].period == "2026-09-01"
-    assert daily[-1].period == "2026-09-21"
+    assert daily[-1].period == "2026-09-20"
+
+
+def test_bugunun_arsivi_hic_istenmez():
+    # Binance günlük arşivi ancak gün bittikten sonra yayımlar; bugünü
+    # istemek kesin 404 demektir.
+    today = dt.date(2026, 9, 21)
+    plan = plan_archives("BTCUSDT", "1m", dt.date(2026, 9, 18), today, today=today)
+    assert all(r.period != today.isoformat() for r in plan)
+    assert plan[-1].period == "2026-09-20"
+
+
+def test_bugun_baslayan_aralik_bos_plan_dondurur():
+    today = dt.date(2026, 9, 21)
+    assert plan_archives("BTCUSDT", "1m", today, today, today=today) == []
 
 
 @pytest.mark.parametrize("with_header", [True, False])
