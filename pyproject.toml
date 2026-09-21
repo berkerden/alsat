@@ -12,6 +12,9 @@ dependencies = [
   "pandas>=2.2",
   "numpy>=1.26",
   "pyarrow>=15.0",
+  # Python'ı işletim sisteminin güven deposuna bağlar; sertifika
+  # doğrulamasını KAPATMADAN kurumsal/antivirüs kök sertifikalarını çözer.
+  "truststore>=0.9",
   # Emir gönderimi ve imzalı istekler Faz 5'te eklenecek:
   # binance-connector DEĞİL — PyPI'da resmen "deprecated".
   # "binance-sdk-spot>=11.3.0",
@@ -22,6 +25,7 @@ dev = ["pytest>=8.0", "pytest-cov>=5.0", "ruff>=0.6", "mypy>=1.11"]
 
 [project.scripts]
 albsat-fizibilite = "albsat.cli.feasibility:main"
+albsat-tls-teshis = "albsat.cli.tlsteshis:main"
 
 [build-system]
 requires = ["hatchling"]

@@ -69,6 +69,30 @@ open fizibilite-sonuc.txt
 
 İçeriği kopyalayıp Claude ile paylaşın.
 
+## "Güvenli bağlantı kurulamadı" / sertifika hatası alırsanız
+
+Hata metninde `CERTIFICATE_VERIFY_FAILED` geçiyorsa, bilgisayarınızdaki Python
+sunucunun sertifikasını doğrulayamıyor demektir. Sebebini bulmak için:
+
+```bash
+cd ~/Desktop/alsat && source .venv/bin/activate
+python -m albsat.cli.tlsteshis
+```
+
+Araç iki olasılığı ayırt eder ve hangisi olduğunu size söyler:
+
+- **Python'ın kök sertifika listesi kurulmamış.** Uygulamalar klasöründeki
+  "Python 3.x" klasörünü açıp `Install Certificates.command` dosyasına bir kez
+  çift tıklayın.
+- **Trafiğinizi açıp yeniden imzalayan bir katman var** (kurumsal ağ, VPN veya
+  HTTPS taraması yapan antivirüs). Uygulama artık macOS'un kendi sertifika
+  deposunu kullandığı için çoğu durumda bu kendiliğinden çözülür. Çözülmezse o
+  ürünün HTTPS tarama özelliğini kapatmayı ya da başka bir ağa geçmeyi deneyin.
+
+> Sertifika doğrulamasını kapatan hiçbir çözümü uygulamayın. İnternette sık
+> önerilir ama bu uygulama ileride emir gönderecek; doğrulamasız bir bağlantıda
+> araya giren biri fiyatları ve emirleri değiştirebilir.
+
 ## Sonradan tekrar çalıştırmak
 
 ```bash

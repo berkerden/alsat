@@ -24,12 +24,14 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import sys
+import ssl
 import urllib.error
 from pathlib import Path
 
 from albsat.core.costs import minimum_meaningful_target, round_trip_for
 from albsat.core.fees import Liquidity, flat_table
 from albsat.core.filters import parse_exchange_info
+from albsat.core.tls import CERTIFICATE_HELP, enable_system_trust
 from albsat.data import vision
 from albsat.data.backfill import merge_frames, repair
 from albsat.data.klines import check_quality
@@ -65,8 +67,22 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _is_certificate_error(error: BaseException) -> bool:
+    seen = set()
+    while error is not None and id(error) not in seen:
+        seen.add(id(error))
+        if isinstance(error, ssl.SSLCertVerificationError):
+            return True
+        error = getattr(error, "reason", None) or error.__cause__
+    return False
+
+
 def _network_failure(error: Exception) -> int:
     """Ağ hatasını yığın izi yerine anlaşılır bir mesajla bildirir."""
+    if _is_certificate_error(error):
+        print(f"\nGüvenli bağlantı kurulamadı.\nHata: {error}\n\n"
+              f"{CERTIFICATE_HELP}", file=sys.stderr)
+        return 3
     print(
         "\nBinance'e bağlanılamadı.\n"
         f"Hata: {error}\n\n"
@@ -91,6 +107,11 @@ def main(argv: list[str] | None = None) -> int:
 
         maker = str(Decimal(maker) * Decimal("0.75"))
         taker = str(Decimal(taker) * Decimal("0.75"))
+
+    # Python'ı işletim sisteminin güven deposuna bağla; araya giren kurumsal
+    # ağ/antivirüs sertifikaları macOS Anahtar Zinciri'nde güvenilirse
+    # doğrulama kapatılmadan çalışır.
+    enable_system_trust()
 
     http = PublicHttp()
     store = KlineStore(args.veri_dizini)
