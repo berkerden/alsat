@@ -188,7 +188,9 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"    {not_published} arşiv henüz yayımlanmamış, "
                       "o aralık REST ile tamamlanacak", flush=True)
 
-            frame = merge_frames(frames)
+            # Daha önce kaydedilmiş veriyle birleştir: geçen çalıştırmada
+            # REST ile doldurulmuş boşluklar tekrar doldurulmasın.
+            frame = merge_frames([store.read(symbol, interval), *frames])
             if not frame.empty:
                 print(f"    {len(frame):,} mum birleştirildi, boşluklar aranıyor...",
                       flush=True)
