@@ -14,6 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+import numpy as np
 import pandas as pd
 
 #: Binance kline dizisindeki alan sırası (REST ve arşiv CSV ortak).
@@ -77,6 +78,58 @@ def candles_per_day(interval: str) -> float:
     return 86_400_000 / interval_ms(interval)
 
 
+# --- Zaman damgası birimi -------------------------------------------------
+#
+# Binance **1 Ocak 2025'ten itibaren** toplu arşivlerde (data.binance.vision)
+# zaman damgalarını **mikrosaniye** cinsinden yayımlıyor; REST uç noktası
+# ``GET /api/v3/klines`` ise hâlâ **milisaniye** döndürüyor.
+# Kaynak: binance/binance-public-data README — "The timestamp for SPOT Data
+# from January 1st 2025 onwards will be in microseconds."
+#
+# İki kaynağı aynı tabloda birleştiren her kod bunu düzeltmek zorundadır.
+# Düzeltilmezse ardışık iki 1m mumu arasındaki fark 60.000.000 olur, beklenen
+# 60.000 ile karşılaştırılır ve **neredeyse her mum çifti "boşluk" sanılır**.
+# Bu da on binlerce gereksiz REST isteği ve IP yasağı riski demektir.
+#
+# Birime "varsayım" yerine "ölçüm" ile karar veriyoruz: makul bir tarih
+# aralığı (1973 → 5138) her birimde ayrık bir büyüklük bandına düşer, bu
+# yüzden değerin kendisi birimini ele verir. Karar satır satır verilir; eski
+# çalıştırmalardan kalmış, mikrosaniye ve milisaniye satırları karışmış bir
+# dosya da böylece kendiliğinden onarılır.
+_SECONDS_RANGE = (10**8, 10**11)
+_MILLISECONDS_RANGE = (10**11, 10**14)
+_MICROSECONDS_RANGE = (10**14, 10**17)
+_NANOSECONDS_RANGE = (10**17, 10**20)
+
+
+def normalize_epoch_ms(values) -> pd.Series:
+    """Hangi birimde gelirse gelsin zaman damgalarını milisaniyeye çevirir.
+
+    Saniye, milisaniye, mikrosaniye ve nanosaniye tanınır. Büyüklüğü
+    tanınan bantların dışında kalan değerler (0, test verisi, bozuk satır)
+    olduğu gibi bırakılır — sessizce yanlış bir tarihe kaydırmaktansa
+    dokunmamak daha güvenlidir.
+    """
+    series = pd.Series(values)
+    numeric = pd.to_numeric(series, errors="coerce").fillna(0)
+    array = numeric.to_numpy(dtype="int64")
+    magnitude = np.abs(array)
+    out = array.copy()
+
+    # Her dönüşüm yalnızca kendi bandındaki satırlara uygulanır; tüm diziyi
+    # çarpıp maskelemek nanosaniye değerlerinde int64 taşması üretirdi.
+    seconds = (magnitude >= _SECONDS_RANGE[0]) & (magnitude < _SECONDS_RANGE[1])
+    out[seconds] = array[seconds] * 1_000
+
+    micro = (magnitude >= _MICROSECONDS_RANGE[0]) & (magnitude < _MICROSECONDS_RANGE[1])
+    out[micro] = array[micro] // 1_000
+
+    nano = (magnitude >= _NANOSECONDS_RANGE[0]) & (magnitude < _NANOSECONDS_RANGE[1])
+    out[nano] = array[nano] // 1_000_000
+
+    return pd.Series(out, index=series.index, dtype="int64")
+
+
 def parse_klines(rows, *, interval: str, now_ms: int | None = None) -> pd.DataFrame:
     """Ham kline dizilerini ``DataFrame``'e çevirir.
 
@@ -93,8 +146,11 @@ def parse_klines(rows, *, interval: str, now_ms: int | None = None) -> pd.DataFr
                "taker_buy_base", "taker_buy_quote")
     for column in numeric:
         frame[column] = pd.to_numeric(frame[column], errors="coerce")
-    for column in ("open_time", "close_time", "trades"):
-        frame[column] = pd.to_numeric(frame[column], errors="coerce").astype("int64")
+    frame["trades"] = pd.to_numeric(frame["trades"], errors="coerce").fillna(0).astype("int64")
+    # Arşiv mikrosaniye, REST milisaniye döndürür; ikisi aynı tabloda
+    # buluşmadan önce tek birime indirilir.
+    for column in ("open_time", "close_time"):
+        frame[column] = normalize_epoch_ms(frame[column])
 
     step = interval_ms(interval)
     if now_ms is None:
@@ -103,6 +159,15 @@ def parse_klines(rows, *, interval: str, now_ms: int | None = None) -> pd.DataFr
         frame["is_closed"] = (frame["open_time"] + step) <= now_ms
 
     frame = frame[list(STORED_COLUMNS) + ["is_closed"]]
+    # Birimi çevrildikten sonra hâlâ makul bir tarihe düşmeyen satır bozuktur
+    # (kısa kesilmiş CSV satırı, boş alan). Tabloda bırakılırsa ``find_gaps``
+    # onunla ilk gerçek mum arasını yıllarca süren tek bir boşluk sanar ve
+    # onarım binlerce istek yapar. Sayıyı uydurmaktansa satırı atıyoruz;
+    # kalite raporu eksiği zaten bildirir.
+    plausible = frame["open_time"].between(
+        _MILLISECONDS_RANGE[0], _MILLISECONDS_RANGE[1] - 1
+    )
+    frame = frame.loc[plausible]
     return frame.sort_values("open_time").reset_index(drop=True)
 
 

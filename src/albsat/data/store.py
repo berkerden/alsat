@@ -16,6 +16,7 @@ from pathlib import Path
 import pandas as pd
 
 from albsat.data.backfill import merge_frames
+from albsat.data.klines import normalize_epoch_ms
 
 
 class KlineStore:
@@ -32,7 +33,19 @@ class KlineStore:
         path = self.path_for(symbol, interval)
         if not path.exists():
             return pd.DataFrame()
-        return pd.read_parquet(path)
+        frame = pd.read_parquet(path)
+        if frame.empty or "open_time" not in frame.columns:
+            return frame
+        # Eski çalıştırmalarda arşiv zaman damgaları mikrosaniye olarak
+        # kaydedilmiş olabilir. Okurken milisaniyeye çeviriyoruz; böylece
+        # bozuk dosyayı silmek gerekmeden kendiliğinden onarılır.
+        normalized = normalize_epoch_ms(frame["open_time"])
+        if not normalized.equals(frame["open_time"]):
+            frame = frame.copy()
+            frame["open_time"] = normalized
+            frame = frame.drop_duplicates(subset="open_time", keep="last")
+            frame = frame.sort_values("open_time").reset_index(drop=True)
+        return frame
 
     def write(self, frame: pd.DataFrame, *, symbol: str, interval: str) -> Path:
         path = self.path_for(symbol, interval)

@@ -33,7 +33,7 @@ from albsat.core.fees import Liquidity, flat_table
 from albsat.core.filters import parse_exchange_info
 from albsat.core.tls import CERTIFICATE_HELP, enable_system_trust
 from albsat.data import vision
-from albsat.data.backfill import extend_to_now, merge_frames, repair
+from albsat.data.backfill import TooManyGaps, extend_to_now, merge_frames, repair
 from albsat.data.klines import check_quality
 from albsat.data.store import KlineStore
 from albsat.exchange.http import HttpError, PublicHttp
@@ -219,6 +219,14 @@ def main(argv: list[str] | None = None) -> int:
                     if filled or extended:
                         print(f"    {filled + extended:,} mum REST ile tamamlandı",
                               flush=True)
+                except TooManyGaps as error:
+                    # Veri bozuk; REST'e yüz binlerce istek göndermek yerine
+                    # bu sembol/periyodu atlıyoruz.
+                    print(f"  ! {error}", file=sys.stderr, flush=True)
+                    print(f"    Silinecek dosya: "
+                          f"{store.path_for(symbol, interval)}", file=sys.stderr,
+                          flush=True)
+                    continue
                 except (urllib.error.URLError, HttpError, OSError) as error:
                     print(f"  ! {symbol} {interval}: boşluklar doldurulamadı ({error})",
                           file=sys.stderr)
