@@ -64,6 +64,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--dogrulama-yok", action="store_true",
                         help="Arşiv SHA256 doğrulamasını atla (önerilmez)")
+    parser.add_argument("--es-zamanli", dest="esZamanli", type=int, default=4,
+                        help="Aynı anda indirilecek arşiv sayısı (varsayılan 4)")
     return parser
 
 
@@ -145,32 +147,46 @@ def main(argv: list[str] | None = None) -> int:
 
     rows = []
     print(f"\nVeri indiriliyor ({start} → {end})...")
+    print("İlk çalıştırmada bu adım uzun sürer; indirilen dosyalar "
+          f"{args.veri_dizini / 'arsiv'} altında saklanır ve sonraki "
+          "çalıştırmalarda tekrar indirilmez.")
     for symbol in args.semboller:
         for interval in args.periyotlar:
-            frames = []
+            refs = vision.plan_archives(symbol, interval, start, end)
+            cache_dir = args.veri_dizini / "arsiv"
+            cached = sum(1 for ref in refs if vision.is_cached(ref, cache_dir))
+            print(f"\n  {symbol} {interval}: {len(refs)} arşiv dosyası "
+                  f"({cached} tanesi önbellekte)", flush=True)
+
             not_published = 0
-            for ref in vision.plan_archives(symbol, interval, start, end):
-                try:
-                    frames.append(
-                        vision.fetch_archive(
-                            ref, http,
-                            cache_dir=args.veri_dizini / "arsiv",
-                            verify=not args.dogrulama_yok,
-                        )
-                    )
-                except HttpError as error:
-                    if error.status == 404:
-                        # Son günlerin arşivi henüz yayımlanmamış olabilir;
-                        # bu normaldir, eksik mumlar REST ile tamamlanır.
-                        not_published += 1
-                    else:
-                        print(f"  ! {ref.filename}: {error}", file=sys.stderr)
-                except Exception as error:
-                    print(f"  ! {ref.filename}: {error}", file=sys.stderr)
+
+            def progress(index, ref, frame, error, total=len(refs)):
+                nonlocal not_published
+                if error is None:
+                    rows = 0 if frame is None else len(frame)
+                    print(f"    [{index}/{total}] {ref.filename} — {rows:,} mum",
+                          flush=True)
+                elif isinstance(error, HttpError) and error.status == 404:
+                    # Son günlerin arşivi henüz yayımlanmamış olabilir;
+                    # bu normaldir, eksik mumlar REST ile tamamlanır.
+                    not_published += 1
+                    print(f"    [{index}/{total}] {ref.filename} — henüz yayımlanmamış",
+                          flush=True)
+                else:
+                    print(f"    [{index}/{total}] {ref.filename} — HATA: {error}",
+                          file=sys.stderr, flush=True)
+
+            frames = vision.fetch_many(
+                refs, http,
+                cache_dir=cache_dir,
+                verify=not args.dogrulama_yok,
+                workers=args.esZamanli,
+                on_result=progress,
+            )
 
             if not_published:
-                print(f"  {symbol} {interval}: {not_published} günlük arşiv henüz "
-                      "yayımlanmamış, o aralık REST ile tamamlanacak")
+                print(f"    {not_published} arşiv henüz yayımlanmamış, "
+                      "o aralık REST ile tamamlanacak", flush=True)
 
             frame = merge_frames(frames)
             if not frame.empty:

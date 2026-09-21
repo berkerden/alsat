@@ -21,10 +21,11 @@ import csv
 import hashlib
 import io
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
-from typing import Iterator, Protocol, Sequence
+from typing import Callable, Iterator, Protocol, Sequence
 
 import pandas as pd
 
@@ -189,3 +190,55 @@ def fetch_archive(
         cached.write_bytes(payload)
 
     return read_archive(payload, interval=ref.interval)
+
+
+def is_cached(ref: ArchiveRef, cache_dir: Path | None) -> bool:
+    if cache_dir is None:
+        return False
+    return (cache_dir / ref.symbol / ref.interval / ref.filename).exists()
+
+
+def fetch_many(
+    refs: Sequence[ArchiveRef],
+    downloader: Downloader,
+    *,
+    cache_dir: Path | None = None,
+    verify: bool = True,
+    workers: int = 4,
+    on_result: Callable[[int, ArchiveRef, pd.DataFrame | None, Exception | None], None]
+    | None = None,
+) -> list[pd.DataFrame]:
+    """Birden çok arşivi indirir; sonuçları **istenen sırada** döndürür.
+
+    Arşivler ``data.binance.vision`` üzerinde statik dosyalardır (borsanın
+    hız sınırına tabi değildir), bu yüzden birkaç dosya aynı anda
+    indirilebilir. Sıralı indirmede 180 günlük veri için yüzlerce istek
+    arka arkaya yapılır ve bu dakikalarca sürer.
+
+    ``on_result`` her dosya bittiğinde çağrılır; ilerlemeyi ekrana basmak
+    içindir. Hata alan dosya ``None`` çerçeveyle ve hata nesnesiyle
+    bildirilir, tüm indirme durmaz.
+    """
+    if not refs:
+        return []
+    workers = max(1, min(workers, len(refs)))
+
+    def one(ref: ArchiveRef) -> tuple[pd.DataFrame | None, Exception | None]:
+        try:
+            return fetch_archive(ref, downloader, cache_dir=cache_dir, verify=verify), None
+        except Exception as error:  # noqa: BLE001 - çağıran karar verir
+            return None, error
+
+    if workers == 1:
+        outcomes = [one(ref) for ref in refs]
+    else:
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            outcomes = list(pool.map(one, refs))
+
+    frames: list[pd.DataFrame] = []
+    for index, (ref, (frame, error)) in enumerate(zip(refs, outcomes), start=1):
+        if on_result is not None:
+            on_result(index, ref, frame, error)
+        if frame is not None:
+            frames.append(frame)
+    return frames

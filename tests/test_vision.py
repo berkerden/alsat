@@ -109,3 +109,80 @@ def test_csv_olmayan_arsiv_hata_verir():
         archive.writestr("okuma.txt", "merhaba")
     with pytest.raises(ValueError, match="CSV"):
         read_archive(buffer.getvalue(), interval="1m")
+
+
+def test_fetch_many_sirayi_korur_ve_ilerleme_bildirir():
+    from albsat.data.vision import fetch_many
+
+    payloads = {}
+    refs = [ArchiveRef("BTCUSDT", "1m", f"2026-09-{day:02d}", "daily")
+            for day in range(1, 9)]
+    for index, ref in enumerate(refs):
+        payloads[ref.filename] = make_zip(with_header=True, count=index + 1)
+
+    class FakeDownloader:
+        def get(self, url):
+            name = url.rsplit("/", 1)[-1].removesuffix(".CHECKSUM")
+            payload = payloads[name]
+            if url.endswith(".CHECKSUM"):
+                return (hashlib.sha256(payload).hexdigest() + f"  {name}").encode()
+            return payload
+
+    seen = []
+    frames = fetch_many(refs, FakeDownloader(), workers=4,
+                        on_result=lambda i, r, f, e: seen.append((i, r.filename)))
+
+    # Paralel indirilse de sonuçlar istenen sırada dönmeli.
+    assert [len(f) for f in frames] == [1, 2, 3, 4, 5, 6, 7, 8]
+    assert [name for _, name in seen] == [r.filename for r in refs]
+    assert [i for i, _ in seen] == list(range(1, 9))
+
+
+def test_fetch_many_hatali_dosyada_durmaz():
+    from albsat.data.vision import fetch_many
+
+    payload = make_zip(with_header=True)
+    refs = [ArchiveRef("BTCUSDT", "1m", f"2026-09-0{day}", "daily") for day in (1, 2, 3)]
+
+    class PartialDownloader:
+        def get(self, url):
+            if "2026-09-02" in url:
+                raise OSError("indirilemedi")
+            if url.endswith(".CHECKSUM"):
+                return (hashlib.sha256(payload).hexdigest() + "  x.zip").encode()
+            return payload
+
+    errors = []
+    frames = fetch_many(refs, PartialDownloader(), workers=2,
+                        on_result=lambda i, r, f, e: errors.append(e))
+
+    # Bir dosya hata verse de diğerleri alınır.
+    assert len(frames) == 2
+    assert sum(1 for e in errors if e is not None) == 1
+
+
+def test_is_cached_onbellekteki_dosyayi_bulur(tmp_path):
+    from albsat.data.vision import is_cached
+
+    ref = ArchiveRef("BTCUSDT", "1m", "2026-08", "monthly")
+    assert not is_cached(ref, tmp_path)
+    target = tmp_path / "BTCUSDT" / "1m" / ref.filename
+    target.parent.mkdir(parents=True)
+    target.write_bytes(make_zip(with_header=True))
+    assert is_cached(ref, tmp_path)
+    assert not is_cached(ref, None)
+
+
+def test_onbellekteki_dosya_tekrar_indirilmez(tmp_path):
+    payload = make_zip(with_header=True)
+    target = tmp_path / "BTCUSDT" / "1m" / "BTCUSDT-1m-2026-08.zip"
+    target.parent.mkdir(parents=True)
+    target.write_bytes(payload)
+
+    class ExplodingDownloader:
+        def get(self, url):
+            raise AssertionError("önbellekte olmasına rağmen indirme denendi")
+
+    frame = fetch_archive(ArchiveRef("BTCUSDT", "1m", "2026-08", "monthly"),
+                          ExplodingDownloader(), cache_dir=tmp_path)
+    assert len(frame) == 3
