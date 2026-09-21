@@ -1,0 +1,49 @@
+# Varsayılan yapılandırma. Tüm limitler arayüzden değiştirilebilir;
+# buradaki değerler temkinli başlangıç noktalarıdır (SPEC.md §4.6).
+
+mod: sadece_oneri        # kapali | sadece_oneri | kagit | demo | yari_otomatik | tam_otomatik
+
+butce:
+  # Doğrulama bütçesi. Bot yalnızca bu tutarı kullanır; hesabın kalanına
+  # dokunmaz. Faz 6'ya kadar artırılmaz.
+  toplam_usdt: "100"
+  # DİKKAT (FAZ0-MIMARI.md Risk #2): 100 USDT bütçe ile dar stoplarda
+  # (%0,3 ve altı) "işlem başı %0,5-1 risk" kuralı uygulanamaz; bütçe
+  # bağlayıcı olur. Risk motoru her öneride hangisinin bağladığını gösterir.
+
+risk:
+  islem_basi_risk_yuzde: "1.0"
+  gunluk_max_zarar_yuzde: "3.0"
+  haftalik_max_dusus_yuzde: "6.0"
+  aylik_max_dusus_yuzde: "10.0"
+  art_arda_kayip_limiti: 4
+  kayip_sonrasi_soguma_mum: 2
+  max_es_zamanli_pozisyon: 1
+  gunluk_max_islem: 20
+
+maliyet:
+  # Sinyal eleme eşiğinin bileşenleri (yüzde)
+  beklenen_spread_yuzde: "0.01"
+  beklenen_kayma_yuzde: "0.02"
+  guvenlik_payi_yuzde: "0.05"
+  bnb_ile_ode: false
+
+emir:
+  giris_tipi: LIMIT_MAKER
+  stop_tipi: STOP_LOSS          # tetiklenince piyasa emri (taker komisyonu)
+  yeniden_fiyatlama_denemesi: 3  # ORDERS rate limit'i yakmamak için düşük
+  # Kısmi dolumda pozisyon borsada korumasız kalır (FAZ0-MIMARI.md Risk #1).
+  # Bu süre dolunca kalan iptal edilir ve dolan miktar için hemen OCO kurulur.
+  korumasiz_azami_saniye: 20
+
+veri:
+  bayat_veri_azami_saniye: 10
+  periyotlar: ["1m", "5m", "15m", "1h"]
+  semboller: ["BTCUSDT", "SOLUSDT"]
+  gecmis_gun: 730
+  gecmis_gun_1m: 180
+
+guvenlik:
+  # Anahtarda para çekme izni açıksa uygulama başlamayı reddeder.
+  cekim_izni_varsa_calisma: true
+  arayuz_yalnizca_yerel: true

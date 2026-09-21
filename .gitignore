@@ -1,0 +1,43 @@
+# Gizli bilgiler — asla depoya girmez (SPEC.md §5)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+*api_key*
+*private_key*
+
+# Veri ve önbellek
+veri/
+data/
+*.parquet
+*.parquet.tmp
+*.db
+*.sqlite3
+arsiv/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+.coverage
+htmlcov/
+
+# Frontend
+node_modules/
+frontend/dist/
+
+# Loglar
+*.log
+logs/
+
+# İşletim sistemi
+.DS_Store
