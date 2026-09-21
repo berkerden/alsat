@@ -6,6 +6,8 @@ import numpy as np
 import pytest
 
 from albsat.research.walkforward import (
+    StabilityRow,
+    period_share_in_direction,
     positive_period_share,
     stability_by_period,
     train_validation_test,
@@ -79,3 +81,19 @@ def test_kararlilik_bos_maskede_bos_doner():
     )
     assert rows == []
     assert positive_period_share(rows) == 0.0
+
+
+def test_kararlilik_yonu_hesaba_katiyor():
+    """Kaçınma örüntüsünde her dönemde eksi olmak DOĞRU yöndür.
+
+    Yönü görmeyen bir kontrol, örüntünün tam da işe yaradığı durumu uyarı
+    sayardı. Gerçek bir koşuda oldu: kabul edilen tek kaçınma örüntüsünün
+    altında "dönemlerin yarısından azında doğru yönde" yazıyordu.
+    """
+    rows = [
+        StabilityRow(period, events=40, net_mean_pct=value, hit_rate=0.2)
+        for period, value in (("2026Q1", -0.3), ("2026Q2", -0.2), ("2026Q3", -0.4))
+    ]
+    assert positive_period_share(rows) == 0.0
+    assert period_share_in_direction(rows, direction="kaçın") == 1.0
+    assert period_share_in_direction(rows, direction="al") == 0.0

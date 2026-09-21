@@ -40,6 +40,7 @@ frontend/dist/
 # Çalıştırma çıktıları (kök dizine sabitlenmiştir)
 /fizibilite-sonuc.txt
 /faz2-oruntu-sonuc.txt
+/faz2-teshis-sonuc.txt
 
 # Loglar
 *.log

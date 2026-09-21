@@ -169,6 +169,21 @@ yapmak, elemeyi bedavaya getirir ve sonucu iyimser gösterirdi. Elenenler tek
 yönlü testte zaten en büyük p-değerlerine sahip olduğu için bu yaklaşım
 matematiksel olarak da güvenli taraftadır.
 
+**Neden düzeltme koşunun tamamı üzerinden?** Bir koşuda 12 bölüm var (2 sembol
+× 2 periyot × 3 pencere). Her bölüm kendi içinde %10 yanlış buluş payıyla
+düzeltilirse, ortada hiçbir şey yokken bile ortalama `12 × 0,10 ≈ 1,2` bölümde
+bir "buluş" çıkar — bölüm içi düzeltme bunu göremez, çünkü kaç bölüm
+çalıştırıldığını bilmez. Bu teorik bir kaygı değil: 22 Eylül 2026 koşusunda
+tam olarak bir örüntü kabul edildi, yani şansın üreteceği sayının kendisi.
+Kabul kararı artık tüm bölümlerin p-değerleri havuzlanarak veriliyor
+(`scan.apply_global_correction`).
+
+Bu düzeltmenin güzel yanı, kör bir sertleştirme olmaması: Benjamini–Hochberg
+sıralamaya bakar, eşiğe değil. Bölümlerin hepsinde görünen gerçek bir kenar,
+havuzda da sıralamanın üstünde kaldığı için hayatta kalır; yalnızca tek bir
+bölümde parlayan bir şans ise deneme sayısının büyümesiyle elenir. İkisi de
+`tests/test_scan.py` içinde ayrı ayrı test ediliyor.
+
 **Neden keşif ve sınama ayrı dönemlerde?** Adaylar yalnızca **eğitim**
 dilimine (ilk %50) bakılarak seçiliyor. Kabul kararını veren p-değeri ise
 yalnızca **ayrılmış dönemden** (doğrulama + test, son %50) hesaplanıyor. İkisi
@@ -310,6 +325,32 @@ python -m albsat.cli.research \
 ```
 
 Sonuç `faz2-oruntu-sonuc.txt` dosyasına yazılır.
+
+### Teşhis turu: ortada yön bilgisi var mı?
+
+Normal tarama şunu sorar: *maliyet ödendikten sonra kâr kalıyor mu?* Cevap
+hayır çıktığında geriye ayrılması gereken bir alt soru kalır: sebep maliyetin
+ağırlığı mı, yoksa ortada hiç yön bilgisi olmaması mı? İkisi aynı şey değil.
+Birincisi ise maliyeti düşürmek (BNB indirimi, maker giriş) bir yol açar;
+ikincisi ise düşürülecek maliyetin altında bir kenar yok demektir ve hiçbir
+indirim bir şey değiştirmez.
+
+```bash
+bash kurulum.sh teshis
+```
+
+Bu, önce normal taramayı, sonra komisyon / spread / kayma ve maliyet eşiğinin
+tamamı sıfır sayılarak aynı taramayı çalıştırır; ikincisi
+`faz2-teshis-sonuc.txt` dosyasına yazılır. Doğrudan:
+
+```bash
+python -m albsat.cli.research --maliyetsiz --rapor faz2-teshis-sonuc.txt
+```
+
+Teşhis turunda kabul edilen bir örüntü **kârlı olduğu anlamına gelmez**;
+yalnızca ölçülebilir bir yön bilgisi bulunduğunu söyler. Raporun başlığı bunu
+her seferinde yazıyor, çünkü bu ayrımın unutulması bu motorun engellemek için
+var olduğu hatanın ta kendisi.
 
 ---
 

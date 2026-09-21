@@ -90,6 +90,21 @@ komutun sonuna `tarama` ekleyin. Bu, internete çıkan adımı tamamen atlar:
 cd ~/Desktop/alsat && bash kurulum.sh tarama
 ```
 
+### Teşhis turunu da çalıştırmak
+
+`tarama` yerine `teshis` yazarsanız, normal taramanın ardından bir de
+**maliyetsiz teşhis turu** çalışır. Bu tur komisyon, spread ve kaymayı sıfır
+sayar ve tek bir soruyu ayırır: kâr çıkmamasının sebebi maliyetin ağırlığı
+mı, yoksa ortada hiç yön bilgisi olmaması mı? Sonucu `faz2-teshis-sonuc.txt`
+dosyasına yazar ve **işlem önerisi üretmez**.
+
+```bash
+cd ~/Desktop/alsat && git pull && bash kurulum.sh teshis
+```
+
+İki tarama art arda çalıştığı için normalin iki katı sürer. Ekrana ilerleme
+yazar; sessiz kalmaz.
+
 ## "Güvenli bağlantı kurulamadı" / sertifika hatası alırsanız
 
 Hata metninde `CERTIFICATE_VERIFY_FAILED` geçiyorsa, bilgisayarınızdaki Python

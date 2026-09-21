@@ -18,10 +18,12 @@ from __future__ import annotations
 import argparse
 import sys
 import time
+from dataclasses import dataclass, replace
 from decimal import Decimal
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 
 from albsat.backtest import run as run_backtest
 from albsat.backtest.benchmarks import buy_and_hold, random_entry_backtest
@@ -29,10 +31,16 @@ from albsat.core.costs import minimum_meaningful_target, round_trip_for
 from albsat.core.fees import Liquidity, flat_table
 from albsat.data.klines import closed_only
 from albsat.data.store import KlineStore
-from albsat.features import build_features
+from albsat.features import FeatureSet, build_features
 from albsat.research import report
-from albsat.research.eventstudy import OutcomeConfig, build_outcomes
-from albsat.research.scan import PatternResult, ScanConfig, ScanResult, scan
+from albsat.research.eventstudy import OutcomeConfig, OutcomeTable, build_outcomes
+from albsat.research.scan import (
+    PatternResult,
+    ScanConfig,
+    ScanResult,
+    apply_global_correction,
+    scan,
+)
 
 #: Faz 1 kapsam kararı (A seçeneği).
 DEFAULT_SYMBOLS = ["BTCUSDT", "SOLUSDT"]
@@ -76,7 +84,27 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Rastgelelik tohumu; aynı tohum aynı sonucu verir")
     parser.add_argument("--hizli", action="store_true",
                         help="Daha az yineleme ve aday ile hızlı bakış")
+    parser.add_argument("--maliyetsiz", action="store_true",
+                        help="Teşhis turu: komisyon, spread, kayma ve maliyet "
+                             "eşiği sıfır sayılır. Yalnızca 'yön bilgisi var mı' "
+                             "sorusunu ölçer; işlem önerisi üretmez.")
     return parser
+
+
+@dataclass(frozen=True)
+class _Section:
+    """Tek bir sembol + periyot + pencere için taranmış bölüm.
+
+    Rapor bloğu hemen yazılmıyor: kabul kararı koşunun tamamı görüldükten
+    sonra verildiği için bölümler önce toplanıyor.
+    """
+
+    frame: pd.DataFrame
+    feature_set: FeatureSet
+    outcomes: OutcomeTable
+    outcome_config: OutcomeConfig
+    result: ScanResult
+    label: str
 
 
 def _missing_data_help(symbol: str, interval: str, directory: Path) -> str:
@@ -103,9 +131,15 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
     maker, taker = args.maker, args.taker
+    spread, slippage, safety = args.spread, args.kayma, args.guvenlik
     if args.bnb_indirimi:
         maker = str(Decimal(maker) * Decimal("0.75"))
         taker = str(Decimal(taker) * Decimal("0.75"))
+    if args.maliyetsiz:
+        # Teşhis turu: tek bir soruyu ayırmak için maliyetin tamamı kaldırılır.
+        # Buradan çıkan hiçbir sayı işlem önerisi değildir.
+        maker = taker = "0"
+        spread = slippage = safety = "0"
 
     iterations = 400 if args.hizli else args.yineleme
     detailed = 30 if args.hizli else args.detay
@@ -122,12 +156,19 @@ def main(argv: list[str] | None = None) -> int:
     )
     threshold = minimum_meaningful_target(
         trip_to_stop,
-        spread_pct=args.spread,
-        slippage_pct=args.kayma,
-        safety_pct=args.guvenlik,
+        spread_pct=spread,
+        slippage_pct=slippage,
+        safety_pct=safety,
     )
+    # Maliyet eşiği maliyetten türer; maliyet yoksa eleme de yoktur.
+    eligibility_threshold = None if args.maliyetsiz else threshold
 
-    chunks: list[str] = [report.header(args.semboller, args.periyotlar, threshold.explain())]
+    chunks: list[str] = [
+        report.header(
+            args.semboller, args.periyotlar, threshold.explain(),
+            diagnostic=args.maliyetsiz,
+        )
+    ]
     print(chunks[0], flush=True)
 
     scan_config = ScanConfig(
@@ -147,6 +188,11 @@ def main(argv: list[str] | None = None) -> int:
 
     missing = 0
     started = time.monotonic()
+
+    # BİRİNCİ GEÇİŞ — bütün bölümler taranır, ama kabul kararı burada
+    # verilmez. Düzeltme, kaç bölüm çalıştırıldığını görebilmek için
+    # koşunun tamamı elde olduktan sonra uygulanır.
+    sections: list[_Section] = []
 
     for symbol in args.semboller:
         for interval in args.periyotlar:
@@ -171,14 +217,14 @@ def main(argv: list[str] | None = None) -> int:
                     horizon=window,
                     target_atr=args.hedef_atr,
                     stop_atr=args.stop_atr,
-                    exit_slippage_pct=float(args.kayma),
+                    exit_slippage_pct=float(slippage),
                 )
                 outcomes = build_outcomes(
                     frame,
                     config=outcome_config,
                     trip_to_target=trip_to_target,
                     trip_to_stop=trip_to_stop,
-                    threshold=threshold,
+                    threshold=eligibility_threshold,
                     ready=feature_set.ready.to_numpy(),
                 )
                 print(f"  {window} mumluk pencere: {outcomes.eligible_count:,} uygun mum, "
@@ -199,53 +245,81 @@ def main(argv: list[str] | None = None) -> int:
                     symbol=symbol, interval=interval,
                     config=scan_config, on_progress=progress,
                 )
-                block = report.scan_block(result, feature_set)
-                chunks.append(block)
-                print("\n" + block, flush=True)
-
-                label = f"{symbol} {interval} · {outcome_config.label_tr}"
-                hold = buy_and_hold(frame, trip_to_stop)
-                best = _best_pattern(result)
-
-                if best is None:
-                    # Kıyas ölçütleri her durumda rapora girer; "bir şey
-                    # bulunamadı" sonucunu okuyan kişinin taban çizgisine en
-                    # çok o anda ihtiyacı var.
-                    print("  kıyas ölçütleri hesaplanıyor...", flush=True)
-                    typical = max(10, int(outcomes.eligible_count / max(window, 1) / 20))
-                    randoms = random_entry_backtest(
-                        frame, outcomes, signal_count=typical,
-                        repeats=min(200, iterations), seed=args.tohum,
+                sections.append(
+                    _Section(
+                        frame=frame,
+                        feature_set=feature_set,
+                        outcomes=outcomes,
+                        outcome_config=outcome_config,
+                        result=result,
+                        label=f"{symbol} {interval} · {outcome_config.label_tr}",
                     )
-                    block = report.benchmark_block(label, randoms, hold)
-                    note = (
-                        "\nBacktest yapılmadı: kabul edilen örüntü yok.\n"
-                        "Backtest edilecek bir kural olmadan sermaye eğrisi "
-                        "çizmek yanıltıcı olur.\n"
-                        "Aşağıdaki kıyas, aynı piyasada rastgele girilseydi ne "
-                        "olacağını gösteriyor.\n"
-                    )
-                    chunks.append(note + "\n\n" + block)
-                    print(note + "\n\n" + block, flush=True)
-                    continue
+                )
 
-                print(f"  en güvenilir örüntü backtest ediliyor: {best.label_tr}",
-                      flush=True)
-                signals = np.ones(len(frame), dtype=bool)
-                for name in best.features:
-                    signals &= feature_set.frame[name].to_numpy(dtype=bool)
-                backtest = run_backtest(frame, outcomes, signals)
-                randoms = random_entry_backtest(
-                    frame, outcomes,
-                    signal_count=backtest.trade_count,
-                    repeats=min(200, iterations),
-                    seed=args.tohum,
-                )
-                block = report.backtest_block(
-                    f"{label} · {best.label_tr}", backtest, randoms, hold
-                )
-                chunks.append(block)
-                print("\n" + block, flush=True)
+    # Koşu genelinde düzeltme. 12 bölümü ayrı ayrı %10 payla düzeltmek,
+    # ortada hiçbir şey yokken bile ortalama 1,2 "buluş" üretir.
+    if sections:
+        print(f"\n{len(sections)} bölüm tarandı; çoklu test düzeltmesi "
+              "koşunun tamamı üzerinden yapılıyor...", flush=True)
+        corrected = apply_global_correction([item.result for item in sections])
+        sections = [
+            replace(section, result=result)
+            for section, result in zip(sections, corrected, strict=True)
+        ]
+
+    # İKİNCİ GEÇİŞ — rapor blokları ve backtest, kabul kararı kesinleştikten
+    # sonra yazılır.
+    for section in sections:
+        result = section.result
+        outcomes = section.outcomes
+        frame = section.frame
+        feature_set = section.feature_set
+        window = section.outcome_config.horizon
+
+        block = report.scan_block(result, feature_set)
+        chunks.append(block)
+        print("\n" + block, flush=True)
+
+        hold = buy_and_hold(frame, trip_to_stop)
+        best = _best_pattern(result)
+
+        if best is None:
+            # Kıyas ölçütleri her durumda rapora girer; "bir şey bulunamadı"
+            # sonucunu okuyan kişinin taban çizgisine en çok o anda ihtiyacı var.
+            print("  kıyas ölçütleri hesaplanıyor...", flush=True)
+            typical = max(10, int(outcomes.eligible_count / max(window, 1) / 20))
+            randoms = random_entry_backtest(
+                frame, outcomes, signal_count=typical,
+                repeats=min(200, iterations), seed=args.tohum,
+            )
+            block = report.benchmark_block(section.label, randoms, hold)
+            note = (
+                "\nBacktest yapılmadı: kabul edilen örüntü yok.\n"
+                "Backtest edilecek bir kural olmadan sermaye eğrisi "
+                "çizmek yanıltıcı olur.\n"
+                "Aşağıdaki kıyas, aynı piyasada rastgele girilseydi ne "
+                "olacağını gösteriyor.\n"
+            )
+            chunks.append(note + "\n\n" + block)
+            print(note + "\n\n" + block, flush=True)
+            continue
+
+        print(f"  en güvenilir örüntü backtest ediliyor: {best.label_tr}", flush=True)
+        signals = np.ones(len(frame), dtype=bool)
+        for name in best.features:
+            signals &= feature_set.frame[name].to_numpy(dtype=bool)
+        backtest = run_backtest(frame, outcomes, signals)
+        randoms = random_entry_backtest(
+            frame, outcomes,
+            signal_count=backtest.trade_count,
+            repeats=min(200, iterations),
+            seed=args.tohum,
+        )
+        block = report.backtest_block(
+            f"{section.label} · {best.label_tr}", backtest, randoms, hold
+        )
+        chunks.append(block)
+        print("\n" + block, flush=True)
 
     chunks.append(report.closing_note())
     print("\n" + chunks[-1], flush=True)

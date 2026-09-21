@@ -81,7 +81,7 @@ def pattern_block(pattern: PatternResult, rank: int) -> str:
     if pattern.stability:
         lines.append(
             f"   çeyreklik kararlılık: {len(pattern.stability)} çeyrekten "
-            f"%{pattern.stable_share * 100:.0f}'i artıda"
+            f"%{pattern.stable_share * 100:.0f}'i beklenen yönde"
         )
     if pattern.direction == "al":
         lines.append(f"   {pattern.random.summary_tr}")
@@ -92,6 +92,49 @@ def pattern_block(pattern: PatternResult, rank: int) -> str:
     else:
         lines.append("   Uyarı yok.")
     return "\n".join(lines)
+
+
+#: Düzeltmeden geçemese de rapora not düşülecek ham p-değeri sınırı.
+NEAR_MISS_P = 0.05
+
+
+def _pattern_list(
+    patterns: tuple[PatternResult, ...], *, top: int, empty_text: str
+) -> list[str]:
+    """Kabul edilenleri, yoksa düzeltme öncesi dikkat çekenleri yazar.
+
+    Dikkat çekenler iki listede de gösteriliyor. Yalnızca "alınacaklar"a
+    bakmak, aşağı yönlü bir bulguyu sessizce gizlerdi; "bir şey bulunamadı"
+    sonucunun ne kadar net olduğunu okuyan kişi iki yönü de görmeli.
+    """
+    accepted = [item for item in patterns if item.accepted]
+    if accepted:
+        out: list[str] = []
+        for rank, pattern in enumerate(accepted[:top], start=1):
+            out.append(pattern_block(pattern, rank))
+            out.append("")
+        return out
+
+    out = [empty_text]
+    near = [item for item in patterns if item.bootstrap.p_value < NEAR_MISS_P][:top]
+    if near:
+        out.append("")
+        out.append("  Düzeltme öncesi dikkat çekenler (kanıt sayılmaz, not düşülüyor):")
+        for rank, pattern in enumerate(near, start=1):
+            out.append("  " + pattern_block(pattern, rank).replace("\n", "\n  "))
+    return out
+
+
+def _correction_scope(result: ScanResult) -> str:
+    """Düzeltmenin kaç deneme üzerinden yapıldığını söyleyen satır."""
+    if result.family_tests and result.family_tests != result.candidates:
+        return (
+            f"Çoklu test düzeltmesi bu bölüm için değil, koşunun tamamı için "
+            f"yapıldı: {result.family_tests:,} deneme. Kaç bölüm çalıştırıldığını "
+            f"hesaba katmayan bir düzeltme, hiçbir şey yokken bile bölüm başına "
+            f"şansa buluş üretir."
+        )
+    return f"Çoklu test düzeltmesi {result.candidates:,} deneme üzerinden yapıldı."
 
 
 def scan_block(result: ScanResult, feature_set: FeatureSet, *, top: int = 5) -> str:
@@ -105,8 +148,8 @@ def scan_block(result: ScanResult, feature_set: FeatureSet, *, top: int = 5) -> 
         baseline_block(result.baseline, config),
         "",
         f"Denenen aday örüntü: {result.candidates:,} "
-        f"(ayrıntılı incelenen {result.evaluated:,}). "
-        f"Çoklu test düzeltmesi {result.candidates:,} deneme üzerinden yapıldı.",
+        f"(ayrıntılı incelenen {result.evaluated:,}).",
+        _correction_scope(result),
     ]
     if result.outcomes.rejected_by_threshold:
         lines.append(
@@ -128,34 +171,28 @@ def scan_block(result: ScanResult, feature_set: FeatureSet, *, top: int = 5) -> 
         )
     lines.append("")
 
-    accepted = [p for p in result.buy_patterns if p.accepted]
     lines.append("ALINACAK ÖRÜNTÜLER")
-    if not accepted:
-        lines.append(
-            "  Çoklu test düzeltmesinden geçen örüntü yok. Bu, bir başarısızlık\n"
-            "  değil bir ölçüm sonucudur: denenen adaylar arasında, şansla\n"
-            "  açıklanamayacak kadar iyi olan çıkmadı."
+    lines.extend(
+        _pattern_list(
+            result.buy_patterns,
+            top=top,
+            empty_text=(
+                "  Çoklu test düzeltmesinden geçen örüntü yok. Bu, bir başarısızlık\n"
+                "  değil bir ölçüm sonucudur: denenen adaylar arasında, şansla\n"
+                "  açıklanamayacak kadar iyi olan çıkmadı."
+            ),
         )
-        near = [p for p in result.buy_patterns if p.bootstrap.p_value < 0.05][:top]
-        if near:
-            lines.append("")
-            lines.append("  Düzeltme öncesi dikkat çekenler (kanıt sayılmaz, not düşülüyor):")
-            for rank, pattern in enumerate(near, start=1):
-                lines.append("  " + pattern_block(pattern, rank).replace("\n", "\n  "))
-    else:
-        for rank, pattern in enumerate(accepted[:top], start=1):
-            lines.append(pattern_block(pattern, rank))
-            lines.append("")
+    )
 
-    avoid = [p for p in result.avoid_patterns if p.accepted]
     lines.append("")
     lines.append("KAÇINILACAK ÖRÜNTÜLER (alma / elindekini sat)")
-    if not avoid:
-        lines.append("  Düzeltmeden geçen bir kaçınma örüntüsü de yok.")
-    else:
-        for rank, pattern in enumerate(avoid[:top], start=1):
-            lines.append(pattern_block(pattern, rank))
-            lines.append("")
+    lines.extend(
+        _pattern_list(
+            result.avoid_patterns,
+            top=top,
+            empty_text="  Düzeltmeden geçen bir kaçınma örüntüsü de yok.",
+        )
+    )
 
     families = sorted({feature_set.family_of(name) for name in feature_set.names})
     lines.append("")
@@ -243,22 +280,50 @@ def benchmark_block(
     return "\n".join(lines)
 
 
-def header(symbols: list[str], intervals: list[str], threshold_text: str) -> str:
+def header(
+    symbols: list[str],
+    intervals: list[str],
+    threshold_text: str,
+    *,
+    diagnostic: bool = False,
+) -> str:
     today = dt.date.today().isoformat()
-    return "\n".join(
-        [
-            LINE,
-            "FAZ 2 — ÖRÜNTÜ KEŞFİ VE BACKTEST",
-            LINE,
-            f"Tarih: {today}",
-            f"Kapsam: {', '.join(symbols)} — {', '.join(intervals)}",
+    title = (
+        "FAZ 2 — TEŞHİS TURU: YÖN BİLGİSİ VAR MI?"
+        if diagnostic
+        else "FAZ 2 — ÖRÜNTÜ KEŞFİ VE BACKTEST"
+    )
+    lines = [
+        LINE,
+        title,
+        LINE,
+        f"Tarih: {today}",
+        f"Kapsam: {', '.join(symbols)} — {', '.join(intervals)}",
+    ]
+    if diagnostic:
+        lines += [
+            "Maliyet: SIFIR sayıldı (komisyon, spread, kayma ve eşik dahil).",
+            "",
+            "BU BİR TEŞHİS TURUDUR, İŞLEM ÖNERİSİ DEĞİL.",
+            "",
+            "Normal tarama şunu sorar: maliyet ödendikten sonra kâr kalıyor mu?",
+            "Cevabı hayırdı. Bu tur tek bir alt soruyu ayırıyor: kâr kalmamasının",
+            "sebebi maliyetin ağırlığı mı, yoksa ortada hiç yön bilgisi olmaması mı?",
+            "",
+            "Burada kabul edilen bir örüntü, gerçek maliyetle kârlı olduğu anlamına",
+            "GELMEZ. Yalnızca 'ölçülebilir bir yön bilgisi var' demektir. Hiçbir şey",
+            "çıkmazsa, maliyeti düşürmek de bir şey değiştirmez — çünkü düşürülecek",
+            "maliyetin altında bir kenar yok.",
+        ]
+    else:
+        lines += [
             f"Maliyet eşiği: {threshold_text}",
             "",
             "Faz 1'in bulgusu gereği hedefler tek mum değil, birkaç mumluk",
             "pencerelerde tanımlandı: kârlılığı hangi grafiğe bakıldığı değil,",
             "pozisyonda ne kadar kalındığı belirliyor.",
         ]
-    )
+    return "\n".join(lines)
 
 
 def closing_note() -> str:

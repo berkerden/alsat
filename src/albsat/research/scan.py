@@ -28,7 +28,7 @@ Tarama iki liste üretir:
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 
 import numpy as np
@@ -53,7 +53,7 @@ from albsat.research.stats import (
 from albsat.research.walkforward import (
     Split,
     StabilityRow,
-    positive_period_share,
+    period_share_in_direction,
     stability_by_period,
     train_validation_test,
     walk_forward_splits,
@@ -113,7 +113,8 @@ class PatternResult:
 
     @property
     def stable_share(self) -> float:
-        return positive_period_share(list(self.stability))
+        """Dönemlerin kaçta kaçı örüntünün beklenen yönünde?"""
+        return period_share_in_direction(list(self.stability), direction=self.direction)
 
     def split(self, name: str) -> SplitStats | None:
         for item in self.splits:
@@ -146,6 +147,14 @@ class ScanResult:
     buy_patterns: tuple[PatternResult, ...]
     avoid_patterns: tuple[PatternResult, ...]
     config: ScanConfig
+    #: Düzeltmenin yapıldığı aile büyüklüğü. 0 ise yalnızca bu bölüm sayıldı;
+    #: koşu genelinde düzeltme uygulandığında tüm bölümlerin toplamı yazılır.
+    family_tests: int = 0
+
+    @property
+    def effective_tests(self) -> int:
+        """Kabul kararının kaç deneme üzerinden verildiği."""
+        return self.family_tests or self.candidates
 
     @property
     def accepted_count(self) -> int:
@@ -166,9 +175,9 @@ class ScanResult:
     @property
     def acceptance_p_threshold(self) -> float:
         """Tek bir örüntünün kabul edilmesi için gereken en küçük p-değeri."""
-        if self.candidates < 1:
+        if self.effective_tests < 1:
             return 0.0
-        return self.config.alpha / self.candidates
+        return self.config.alpha / self.effective_tests
 
 
 def _label(features: tuple[str, ...], feature_set: FeatureSet) -> str:
@@ -290,7 +299,7 @@ def _warnings(
         notes.append("Güven aralığı sıfırı içeriyor; sonuç gürültüden ayrışmıyor.")
     if direction == "al" and not random.beats_random:
         notes.append("Rastgele girişten ayırt edilemiyor.")
-    if stability and positive_period_share(stability) < 0.5:
+    if stability and period_share_in_direction(stability, direction=direction) < 0.5:
         notes.append("Dönemlerin yarısından azında doğru yönde.")
     if walk_forward_positive < 0.5:
         notes.append("Walk-forward katmanlarının yarısından azında doğru yönde.")
@@ -478,6 +487,64 @@ def _apply_correction(
         )
     corrected.sort(key=lambda r: (not r.accepted, r.q_value))
     return tuple(corrected)
+
+
+def apply_global_correction(
+    results: Sequence[ScanResult], *, alpha: float | None = None
+) -> list[ScanResult]:
+    """Koşunun tamamını **tek bir aile** sayarak düzeltmeyi yeniden uygular.
+
+    Bir koşuda 12 bölüm varsa (2 sembol × 2 periyot × 3 pencere) ve her bölüm
+    kendi içinde %10 yanlış buluş payıyla düzeltilirse, ortada hiçbir şey
+    yokken bile ortalama ``12 × 0,10 ≈ 1,2`` bölümde bir "buluş" çıkar. Bölüm
+    içi düzeltme bunu göremez, çünkü kaç bölüm çalıştırıldığını bilmez. Bu,
+    teoride değil pratikte oldu: 22 Eylül 2026 koşusunda tam olarak bir
+    örüntü kabul edildi — şansın üreteceği sayının kendisi.
+
+    Bu yüzden kabul kararı, tüm bölümlerin p-değerleri havuzlanarak ve deneme
+    sayısı tüm bölümlerin adayları toplanarak veriliyor. Tek bölümlük bir
+    koşuda sonuç değişmez.
+    """
+    items = list(results)
+    if not items:
+        return []
+
+    alpha = items[0].config.alpha if alpha is None else alpha
+    total = sum(item.candidates for item in items)
+
+    flat: list[PatternResult] = []
+    for item in items:
+        flat.extend(item.buy_patterns)
+        flat.extend(item.avoid_patterns)
+    if not flat:
+        return [replace(item, family_tests=total) for item in items]
+
+    p_values = np.array([pattern.bootstrap.p_value for pattern in flat], dtype=float)
+    accepted, q_values = benjamini_hochberg(p_values, alpha, total_tests=total)
+
+    decided = {
+        id(pattern): (bool(is_accepted), float(q_value))
+        for pattern, is_accepted, q_value in zip(flat, accepted, q_values, strict=True)
+    }
+
+    def redo(patterns: tuple[PatternResult, ...]) -> tuple[PatternResult, ...]:
+        out = [
+            replace(pattern, accepted=decided[id(pattern)][0],
+                    q_value=decided[id(pattern)][1])
+            for pattern in patterns
+        ]
+        out.sort(key=lambda item: (not item.accepted, item.q_value))
+        return tuple(out)
+
+    return [
+        replace(
+            item,
+            buy_patterns=redo(item.buy_patterns),
+            avoid_patterns=redo(item.avoid_patterns),
+            family_tests=total,
+        )
+        for item in items
+    ]
 
 
 def scan(

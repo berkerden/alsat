@@ -14,10 +14,13 @@ cd "$(dirname "$0")" || exit 1
 
 # "bash kurulum.sh tarama" veri indirme adımını atlar: Faz 2 örüntü taraması
 # internete çıkmaz, veriyi diskteki ./veri klasöründen okur.
+# "bash kurulum.sh teshis" ayrıca maliyetsiz teşhis turunu da çalıştırır.
 SADECE_TARAMA=0
-if [ "${1:-}" = "tarama" ]; then
-  SADECE_TARAMA=1
-fi
+TESHIS=0
+case "${1:-}" in
+  tarama) SADECE_TARAMA=1 ;;
+  teshis) SADECE_TARAMA=1; TESHIS=1 ;;
+esac
 
 baslik "1/5  Python sürümü aranıyor (3.12 veya üstü gerekiyor)"
 
@@ -119,14 +122,33 @@ ORUNTU="faz2-oruntu-sonuc.txt"
 python -m albsat.cli.research --rapor "$ORUNTU"
 TARAMA_SONUC=$?
 
+TESHIS_SONUC=1
+TESHIS_DOSYA="faz2-teshis-sonuc.txt"
+if [ "$TESHIS" = "1" ]; then
+  baslik "Ek adım  Teşhis turu: ortada yön bilgisi var mı?"
+  printf '   Bu tur maliyeti SIFIR sayar ve işlem önerisi ÜRETMEZ.\n'
+  printf '   Tek bir soruyu ayırır: kâr çıkmamasının sebebi maliyetin\n'
+  printf '   ağırlığı mı, yoksa ortada hiç yön bilgisi olmaması mı?\n'
+  printf '   Yukarıdaki tarama kadar sürer; ekrana ilerleme yazar.\n\n'
+
+  python -m albsat.cli.research --rapor "$TESHIS_DOSYA" --maliyetsiz
+  TESHIS_SONUC=$?
+fi
+
 baslik "Bitti"
 if [ "$SADECE_TARAMA" != "1" ] && [ -s "$CIKTI" ]; then
   printf 'Fizibilite sonucu:   %s%s%s\n' "$KALIN" "$PWD/$CIKTI" "$SIFIR"
 fi
 if [ "$TARAMA_SONUC" = "0" ]; then
   printf 'Örüntü raporu:       %s%s%s\n' "$KALIN" "$PWD/$ORUNTU" "$SIFIR"
-  printf '\nRaporu açmak için:  open "%s"\n' "$ORUNTU"
-  printf '\nBu dosyanın içeriğini Claude ile paylaşın.\n'
+  if [ "$TESHIS_SONUC" = "0" ]; then
+    printf 'Teşhis raporu:       %s%s%s\n' "$KALIN" "$PWD/$TESHIS_DOSYA" "$SIFIR"
+    printf '\nRaporları açmak için:  open "%s" "%s"\n' "$ORUNTU" "$TESHIS_DOSYA"
+    printf '\nHer iki dosyanın içeriğini de Claude ile paylaşın.\n'
+  else
+    printf '\nRaporu açmak için:  open "%s"\n' "$ORUNTU"
+    printf '\nBu dosyanın içeriğini Claude ile paylaşın.\n'
+  fi
 else
   hata "Örüntü taraması veriyi bulamadı."
   printf 'Önce veriyi indirmek için şunu çalıştırın:  bash kurulum.sh\n'

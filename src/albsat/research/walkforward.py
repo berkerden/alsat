@@ -151,3 +151,16 @@ def positive_period_share(rows: list[StabilityRow]) -> float:
     if not rows:
         return 0.0
     return sum(1 for row in rows if row.positive) / len(rows)
+
+
+def period_share_in_direction(rows: list[StabilityRow], *, direction: str) -> float:
+    """Dönemlerin kaçta kaçında örüntü **beklenen yönde**? (0–1)
+
+    "al" için artıda olmak, "kaçın" için ekside olmak doğru yöndür. Yönü
+    hesaba katmayan bir kontrol, kaçınma örüntüsünün tam da işe yaradığı
+    durumu — her dönemde eksi — bir uyarı olarak gösterirdi.
+    """
+    if not rows:
+        return 0.0
+    want_positive = direction != "kaçın"
+    return sum(1 for row in rows if row.positive == want_positive) / len(rows)

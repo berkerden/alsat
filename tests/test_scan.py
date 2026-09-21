@@ -14,6 +14,8 @@ bulmamaktan pahalıdır.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 import pytest
 from veri_uret import planted_signal, poison_future, random_walk
@@ -22,7 +24,7 @@ from albsat.core.costs import minimum_meaningful_target, round_trip_for
 from albsat.core.fees import Liquidity, flat_table
 from albsat.features import build_features
 from albsat.research.eventstudy import OutcomeConfig, build_outcomes
-from albsat.research.scan import ScanConfig, scan
+from albsat.research.scan import ScanConfig, apply_global_correction, scan
 
 FAST = ScanConfig(detailed_top=60, bootstrap_iterations=600, random_repeats=600)
 
@@ -167,3 +169,75 @@ def test_kacinilacak_liste_dusen_oruntuleri_yakaliyor():
     assert accepted, "Aşağı yönlü gömülü kural bulunamadı"
     assert any("hacim_patlamasi" in pattern.features for pattern in accepted[:5])
     assert np.count_nonzero(trigger) > 100
+
+
+def _sections(frame, horizons=(2, 3, 4)):
+    """Aynı seriyi birkaç pencereyle tarar — gerçek bir koşunun küçüğü."""
+    return [
+        scan(
+            frame, *prepare(frame, horizon=horizon),
+            symbol="BTCUSDT", interval="15m", config=FAST,
+        )
+        for horizon in horizons
+    ]
+
+
+def test_kosu_geneli_duzeltme_tek_bolumluk_sansi_eliyor():
+    """Yalnızca bir bölümde parlayan örüntü, koşu geneli sayıldığında elenmeli.
+
+    Gerçek koşuda tam olarak bu oldu: 12 bölüm ayrı ayrı %10 payla
+    düzeltildi ve ortada hiçbir şey yokken bir örüntü kabul edildi —
+    12 × 0,10 ≈ 1,2, yani şansın üreteceği sayının kendisi.
+    """
+    frame = random_walk(9_000, seed=7)
+    sections = _sections(frame)
+    first = sections[0]
+    # Maliyet varken rastgele yürüyüşte "alınacak" adayı hiç çıkmaz; şansı
+    # kaçınma listesine yerleştiriyoruz. Düzeltme iki listeyi ayırmaz.
+    assert first.avoid_patterns, "aday çıkmadı; test kurulamıyor"
+
+    # Yalnızca kendi bölümü sayılsaydı rahatça kabul edilecek bir p-değeri.
+    lucky = first.avoid_patterns[0]
+    p_value = FAST.alpha / first.candidates / 2
+    lucky = replace(lucky, bootstrap=replace(lucky.bootstrap, p_value=p_value))
+    first = replace(first, avoid_patterns=(lucky, *first.avoid_patterns[1:]))
+
+    alone = apply_global_correction([first])[0]
+    assert any(
+        item.accepted and item.features == lucky.features
+        for item in alone.avoid_patterns
+    ), "tek bölüm sayıldığında kabul edilmeliydi; test kurulumu bozuk"
+
+    whole = apply_global_correction([first, *sections[1:]])[0]
+    assert not any(
+        item.accepted and item.features == lucky.features
+        for item in whole.avoid_patterns
+    ), "tek bölümde parlayan örüntü koşu genelinde de kabul edildi"
+
+
+def test_kosu_geneli_duzeltme_gercek_kenari_koruyor():
+    """Bölümlerin hepsinde görünen gerçek bir kenar elenmemeli.
+
+    Düzeltmeyi sertleştirmek kolaydır; marifet, bulunması gerekeni bulmaya
+    devam etmesidir.
+    """
+    frame, _ = planted_signal(9_000, drift_pct=0.9)
+    sections = _sections(frame)
+    corrected = apply_global_correction(sections)
+
+    total = sum(item.candidates for item in sections)
+    assert all(item.family_tests == total for item in corrected)
+    assert any(
+        pattern.accepted for item in corrected for pattern in item.buy_patterns
+    ), "koşu geneli düzeltme gömülü kenarı da eledi"
+
+
+def test_tek_bolumluk_kosuda_duzeltme_degismiyor():
+    frame, _ = planted_signal(9_000, drift_pct=0.9)
+    section = _sections(frame, horizons=(3,))[0]
+    corrected = apply_global_correction([section])[0]
+
+    assert corrected.family_tests == section.candidates
+    before = {item.features for item in section.buy_patterns if item.accepted}
+    after = {item.features for item in corrected.buy_patterns if item.accepted}
+    assert before == after

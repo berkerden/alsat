@@ -145,3 +145,40 @@ def test_taban_cizgisi_bos_veriyle_cokmuyor():
     empty = summarize(outcomes, np.zeros(len(frame), dtype=bool))
     text = report.baseline_block(empty, outcomes.config)
     assert "hesaplanamadı" in text
+
+
+def test_cli_maliyetsiz_teshis_turu(veri_dizini, tmp_path):
+    """Teşhis turu maliyeti sıfırlar ve ne olmadığını açıkça söyler."""
+    rapor = tmp_path / "teshis.txt"
+    code = research.main([
+        "--veri-dizini", str(veri_dizini),
+        "--rapor", str(rapor),
+        "--hizli",
+        "--pencereler", "3",
+        "--maliyetsiz",
+    ])
+    assert code == 0
+    text = rapor.read_text(encoding="utf-8")
+    assert "TEŞHİS TURU" in text
+    assert "İŞLEM ÖNERİSİ DEĞİL" in text
+    # Maliyet eşiği maliyetten türer; maliyet yoksa eleme de olmamalı.
+    assert "Maliyet eşiğini geçemediği için elenen mum" not in text
+    assert "Maliyet: SIFIR sayıldı" in text
+
+
+def test_cli_duzeltme_kosunun_tamamina_uygulaniyor(veri_dizini, tmp_path):
+    """Birden çok bölüm çalıştıysa düzeltme bölüm içinde kalmamalı.
+
+    12 bölümü ayrı ayrı %10 payla düzeltmek, ortada hiçbir şey yokken bile
+    ortalama 1,2 "buluş" üretir.
+    """
+    rapor = tmp_path / "sonuc.txt"
+    code = research.main([
+        "--veri-dizini", str(veri_dizini),
+        "--rapor", str(rapor),
+        "--hizli",
+        "--pencereler", "2", "3",
+    ])
+    assert code == 0
+    text = rapor.read_text(encoding="utf-8")
+    assert "koşunun tamamı için" in text
