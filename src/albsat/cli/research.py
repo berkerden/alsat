@@ -219,10 +219,11 @@ def main(argv: list[str] | None = None) -> int:
                     )
                     block = report.benchmark_block(label, randoms, hold)
                     note = (
-                        "\nBacktest yapılmadı: kabul edilen örüntü yok. "
+                        "\nBacktest yapılmadı: kabul edilen örüntü yok.\n"
                         "Backtest edilecek bir kural olmadan sermaye eğrisi "
-                        "çizmek yanıltıcı olur. Aşağıdaki kıyas, aynı piyasada "
-                        "rastgele girilseydi ne olacağını gösteriyor."
+                        "çizmek yanıltıcı olur.\n"
+                        "Aşağıdaki kıyas, aynı piyasada rastgele girilseydi ne "
+                        "olacağını gösteriyor.\n"
                     )
                     chunks.append(note + "\n\n" + block)
                     print(note + "\n\n" + block, flush=True)
