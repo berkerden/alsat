@@ -170,15 +170,17 @@ def render_table(rows: list[FeasibilityRow]) -> str:
     if not rows:
         return "Tablo için veri yok."
 
+    # Sütun adı "ortalama" değil "medyan": tek bir aykırı gün ortalamayı
+    # yukarı çeker, karar da olduğundan iyimser görünür.
     header = (
-        f"{'Sembol':<10} {'Periyot':>7} {'Mum':>9} {'ATR% ort':>9} "
+        f"{'Sembol':<10} {'Periyot':>7} {'Mum':>9} {'ATR% medyan':>12} "
         f"{'Min hedef%':>11} {'Oran':>6} {'Gün/mum':>9}  Sonuç"
     )
     lines = [header, "-" * len(header)]
     for row in rows:
         lines.append(
             f"{row.symbol:<10} {row.interval:>7} {row.candles:>9,} "
-            f"{row.atr_pct_median:>9.4f} {row.minimum_target_pct:>11.4f} "
+            f"{row.atr_pct_median:>12.4f} {row.minimum_target_pct:>11.4f} "
             f"{row.ratio:>6.2f} {row.candles_per_day:>9,.0f}  {row.verdict}"
         )
     lines.append("")
