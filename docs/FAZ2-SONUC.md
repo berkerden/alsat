@@ -4,7 +4,8 @@
 **Kapsam:** BTCUSDT ve SOLUSDT, 15m ve 1h; hedef pencereleri 2, 3 ve 4 mum
 (12 kombinasyon). Hedef 1,5×ATR, stop 1×ATR.
 **Veri:** Berk'in kendi bilgisayarında, Binance'in kendi arşivinden inen
-gerçek piyasa verisi. Ham çıktı: `faz2-oruntu-sonuc.txt`.
+gerçek piyasa verisi. Ham çıktılar: `faz2-oruntu-sonuc.txt` ve
+`faz2-teshis-sonuc.txt`.
 
 ---
 
@@ -12,6 +13,10 @@ gerçek piyasa verisi. Ham çıktı: `faz2-oruntu-sonuc.txt`.
 
 **Kabul edilen örüntü yok** — ne alınacaklar ne de kaçınılacaklar listesinde,
 12 kombinasyonun hiçbirinde. Toplam 6.372 aday denendi.
+
+Maliyet tamamen kaldırılıp arama tekrarlandığında da sonuç aynı: 9.215 aday,
+12 bölüm, sıfır kabul (7. bölüm). Yani kâr çıkmamasının sebebi maliyetin
+ağırlığı değil; ortada ölçülebilir bir **yön bilgisi yok**.
 
 Bu bir arıza değil, bir ölçüm sonucudur. Motorun doğru çalıştığının kanıtı
 bulduğu örüntüler değil, bulmadıklarıdır: sentetik veriye bilerek konmuş bir
@@ -138,11 +143,51 @@ olacağını hiçbir zaman söylemedi. Yön bilgisi yoksa beklenen brüt kazanç
 sıfırdır; maliyet ise sıfır değildir. Uzun tutmak bu yüzden tek başına
 kurtarmıyor — yalnızca aynı sabit maliyeti daha seyrek ödetiyor.
 
-Kârlılığın koşulu, tutma süresi değil **yön bilgisi**. Bir sonraki adım
-(maliyetsiz teşhis turu) tam olarak bunu ölçüyor: maliyet hiç yokmuş gibi
-sayıldığında ortada ölçülebilir bir yön bilgisi kalıyor mu?
+Kârlılığın koşulu, tutma süresi değil **yön bilgisi**. Bir sonraki bölüm
+tam olarak bunu ölçüyor ve cevabı veriyor.
 
-## 7. Koşular sırasında motorda bulunan kusurlar
+## 7. Teşhis turu: ortada yön bilgisi var mı?
+
+Normal tarama "maliyet ödendikten sonra kâr kalıyor mu" diye sorar ve cevabı
+hayırdı. Geriye ayrılması gereken bir alt soru kalıyordu: sebep maliyetin
+ağırlığı mı, yoksa ortada hiç yön bilgisi olmaması mı? İkisi aynı şey değil —
+birincisi ise maliyeti düşürmek (BNB indirimi, maker giriş) bir yol açardı.
+
+Komisyon, spread, kayma ve maliyet eşiğinin tamamı sıfır sayılıp aynı tarama
+tekrarlandı (`bash kurulum.sh teshis`). **12 bölümün hiçbirinde, iki listede
+de kabul edilen örüntü yok.** Eşik 9.215 aday üzerinden `0,0000109`; en yakın
+aday 6 katı uzakta.
+
+Üç sayı bunu tek başına anlatıyor:
+
+| | Maliyetli koşu | Maliyetsiz koşu |
+|---|---|---|
+| Taban çizgisi (işlem başına) | %-0,22 | %-0,0003 … %-0,0209 |
+| Rastgele girişin toplamı | %-11,9 … %-63,0 | %-0,8 … %+0,25 |
+| Artıda biten deneme oranı | %0,0 … %1,5 | %39,5 … %52,0 |
+
+Maliyet kaldırıldığında rastgele işlem yapmak **yazı tura** oluyor:
+denemelerin yaklaşık yarısı artıda bitiyor ve ortalama sıfır. Demek ki
+maliyetli koşudaki %-0,22'nin tamamı maliyetti. Ve maliyet kaldırıldığında
+geriye bir kenar değil, bir yazı tura kaldı.
+
+Taban çizgisindeki küçük eksi (%-0,0003'ten %-0,0209'a, pencere uzadıkça
+büyüyor) bir piyasa özelliği değil, bilerek seçilmiş temkinli varsayımın
+izi: aynı mumda hem hedefe hem stopa değilirse stop kabul ediliyor. Pencere
+uzadıkça bu durum sıklaşıyor.
+
+**Tavan argümanı.** İstatistiksel disiplini tamamen bir kenara bırakıp,
+9.215 aday içinden en iyi görüneni seçtiğimizi varsayalım. Tüm koşudaki en
+yüksek değer SOLUSDT 1h, 4 mumluk pencerede: işlem başına **%+0,2304**
+(97 olay, 63 bağımsız). Maliyet %0,28; BNB indirimiyle %0,23. Yani en fazla
+kayırılmış aday bile, maliyetsiz ölçüldüğü halde maliyeti karşılamıyor.
+Üstelik kendi güven aralığı sıfırı içeriyor (%-0,0085 … %+0,6478) ve
+ayrılmış dönemde yalnızca 27 bağımsız olaya dayanıyor.
+
+Sonuç: **maliyeti düşürmek bir yol açmıyor.** Düşürülecek maliyetin altında
+bir kenar yok.
+
+## 8. Koşular sırasında motorda bulunan kusurlar
 
 Üçü de gerçek veriyle çalıştıktan sonra bulundu ve düzeltildi.
 
@@ -170,7 +215,7 @@ işe yaradığı durum — uyarı olarak yazılıyordu. Düzeltildi. Aynı şeki
 "düzeltme öncesi dikkat çekenler" notu yalnızca "alınacaklar" listesinde
 gösteriliyordu; artık iki listede de gösteriliyor.
 
-## 8. Faz 3'e taşınanlar
+## 9. Faz 3'e taşınanlar
 
 1. Komisyon %0,1/%0,1 hâlâ varsayım. Hesaba özel gerçek oran Faz 4'te
    ölçülecek ve bu rapordaki her sayı yenilenecek. Gerçek oran daha düşükse
@@ -182,6 +227,10 @@ gösteriliyordu; artık iki listede de gösteriliyor.
    sorudur.
 4. Giriş araştırmada piyasa emri sayıldı, `LIMIT_MAKER` değil (SPEC §4.5).
    Dolmama riski olan bir emri dolmuş saymak sonucu iyimser gösterirdi.
+5. Ölçülen her bölümde en iyi sonucu **al-ve-tut** verdi (BTCUSDT %+28,8,
+   SOLUSDT %+41,1, komisyon sonrası). Bu bir yatırım tavsiyesi değil, bu veri
+   kümesindeki bir ölçüm sonucudur; ama uygulamanın amacının yeniden
+   düşünülmesi gerekip gerekmediği sorusunu açıyor ve o soru Berk'in.
 
 ---
 
