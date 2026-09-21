@@ -71,12 +71,12 @@ Betik iki dosya üretir:
 | Dosya | Ne var içinde |
 |---|---|
 | `fizibilite-sonuc.txt` | Hangi coin ve periyot matematiksel olarak anlamlı (Faz 1) |
-| `faz2-orunti-sonuc.txt` | Örüntü keşfi, istatistik ve backtest raporu (Faz 2) |
+| `faz2-oruntu-sonuc.txt` | Örüntü keşfi, istatistik ve backtest raporu (Faz 2) |
 
 Açmak için:
 
 ```bash
-open faz2-orunti-sonuc.txt
+open faz2-oruntu-sonuc.txt
 ```
 
 İçeriği kopyalayıp Claude ile paylaşın.

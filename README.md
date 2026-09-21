@@ -133,7 +133,7 @@ Tarama sırasıyla şunları yapar:
 6. Kabul edilen en güvenilir örüntüyü backtest eder ve rastgele girişle
    kıyaslar.
 
-Sonuç `faz2-orunti-sonuc.txt` dosyasına yazılır.
+Sonuç `faz2-oruntu-sonuc.txt` dosyasına yazılır.
 
 **"Kabul edilen örüntü yok" geçerli ve beklenen bir sonuçtur.** Yüzlerce aday
 denendiğinde bazılarının şans eseri iyi görünmesi kaçınılmazdır; düzeltmenin

@@ -46,7 +46,7 @@ DEFAULT_TAKER = "0.001"
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="albsat-orunti",
+        prog="albsat-oruntu",
         description="Örüntü keşfi, istatistiksel doğrulama ve backtest (Faz 2)",
     )
     parser.add_argument("--semboller", nargs="+", default=DEFAULT_SYMBOLS)
@@ -58,7 +58,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--stop-atr", type=float, default=1.0,
                         help="Stop = bu katsayı × ATR (varsayılan 1.0)")
     parser.add_argument("--veri-dizini", default="./veri", type=Path)
-    parser.add_argument("--rapor", default="faz2-orunti-sonuc.txt", type=Path)
+    parser.add_argument("--rapor", default="faz2-oruntu-sonuc.txt", type=Path)
     parser.add_argument("--maker", default=DEFAULT_MAKER)
     parser.add_argument("--taker", default=DEFAULT_TAKER)
     parser.add_argument("--spread", default="0.01", help="Beklenen spread %%")

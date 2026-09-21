@@ -115,7 +115,7 @@ printf '   Bu adım internete çıkmaz; diskteki veriyi okur.\n'
 printf '   BTCUSDT ve SOLUSDT, 15m ve 1h, 2-3-4 mumluk hedef pencereleri.\n'
 printf '   Birkaç dakika sürebilir; ekrana ilerleme yazar.\n\n'
 
-ORUNTU="faz2-orunti-sonuc.txt"
+ORUNTU="faz2-oruntu-sonuc.txt"
 python -m albsat.cli.research --rapor "$ORUNTU"
 TARAMA_SONUC=$?
 

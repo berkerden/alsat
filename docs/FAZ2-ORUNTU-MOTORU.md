@@ -8,7 +8,7 @@ girişle kıyas içerir."*
 
 Bu belge motorun **nasıl kurulduğunu ve neden öyle kurulduğunu** anlatır.
 Gerçek veriyle çalıştırılınca çıkan sayılar ayrı bir rapora
-(`faz2-orunti-sonuc.txt`) yazılır.
+(`faz2-oruntu-sonuc.txt`) yazılır.
 
 ---
 
@@ -290,7 +290,7 @@ python -m albsat.cli.research \
   --hedef-atr 1.5 --stop-atr 1.0
 ```
 
-Sonuç `faz2-orunti-sonuc.txt` dosyasına yazılır.
+Sonuç `faz2-oruntu-sonuc.txt` dosyasına yazılır.
 
 ---
 

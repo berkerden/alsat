@@ -25,7 +25,7 @@ dev = ["pytest>=8.0", "pytest-cov>=5.0", "ruff>=0.6", "mypy>=1.11"]
 
 [project.scripts]
 albsat-fizibilite = "albsat.cli.feasibility:main"
-albsat-orunti = "albsat.cli.research:main"
+albsat-oruntu = "albsat.cli.research:main"
 albsat-tls-teshis = "albsat.cli.tlsteshis:main"
 
 [build-system]
