@@ -129,10 +129,10 @@ def _correction_scope(result: ScanResult) -> str:
     """Düzeltmenin kaç deneme üzerinden yapıldığını söyleyen satır."""
     if result.family_tests and result.family_tests != result.candidates:
         return (
-            f"Çoklu test düzeltmesi bu bölüm için değil, koşunun tamamı için "
-            f"yapıldı: {result.family_tests:,} deneme. Kaç bölüm çalıştırıldığını "
-            f"hesaba katmayan bir düzeltme, hiçbir şey yokken bile bölüm başına "
-            f"şansa buluş üretir."
+            "Çoklu test düzeltmesi bu bölüm için değil, koşunun tamamı için\n"
+            f"yapıldı: {result.family_tests:,} deneme. Kaç bölüm çalıştırıldığını\n"
+            "hesaba katmayan bir düzeltme, hiçbir şey yokken bile bölüm başına\n"
+            "şansa buluş üretir."
         )
     return f"Çoklu test düzeltmesi {result.candidates:,} deneme üzerinden yapıldı."
 
