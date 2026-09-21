@@ -28,40 +28,26 @@ import numpy as np
 import pandas as pd
 
 from albsat.core.costs import TargetThreshold
-from albsat.core.money import ONE_HUNDRED, ZERO, to_decimal
+from albsat.core.money import ZERO, to_decimal
 from albsat.data.klines import candles_per_day, closed_only
+from albsat.features.indicators import atr, atr_percent, true_range
 
 #: Fizibilite oranı eşikleri (varsayılan).
 RATIO_UNTRADEABLE = Decimal("1.0")
 RATIO_MARGINAL = Decimal("2.0")
 
-
-def true_range(frame: pd.DataFrame) -> pd.Series:
-    """Wilder'ın gerçek aralığı (true range).
-
-    ``max(high-low, |high-önceki kapanış|, |low-önceki kapanış|)``
-    """
-    high, low, close = frame["high"], frame["low"], frame["close"]
-    previous_close = close.shift(1)
-    spans = pd.concat(
-        [
-            high - low,
-            (high - previous_close).abs(),
-            (low - previous_close).abs(),
-        ],
-        axis=1,
-    )
-    return spans.max(axis=1)
-
-
-def atr(frame: pd.DataFrame, period: int = 14) -> pd.Series:
-    """Wilder yumuşatmalı ATR (``ewm(alpha=1/period)`` ile eşdeğer)."""
-    return true_range(frame).ewm(alpha=1.0 / period, adjust=False, min_periods=period).mean()
-
-
-def atr_percent(frame: pd.DataFrame, period: int = 14) -> pd.Series:
-    """ATR'nin kapanış fiyatına oranı, yüzde olarak."""
-    return atr(frame, period) / frame["close"] * 100.0
+# ATR hesabı Faz 2'de özellik katmanına taşındı; burada yeniden
+# tanımlamak iki ayrı doğruluk kaynağı yaratırdı.
+__all__ = [
+    "RATIO_MARGINAL",
+    "RATIO_UNTRADEABLE",
+    "FeasibilityRow",
+    "atr",
+    "atr_percent",
+    "render_table",
+    "scan_interval",
+    "true_range",
+]
 
 
 @dataclass(frozen=True)

@@ -37,6 +37,10 @@ htmlcov/
 node_modules/
 frontend/dist/
 
+# Çalıştırma çıktıları (kök dizine sabitlenmiştir)
+/fizibilite-sonuc.txt
+/faz2-orunti-sonuc.txt
+
 # Loglar
 *.log
 /logs/

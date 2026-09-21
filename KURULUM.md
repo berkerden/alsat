@@ -39,35 +39,56 @@ cd ~/Desktop/alsat && bash kurulum.sh
 
 ## 3. Betiğin bitmesini bekleyin
 
-Betik dört adımı ekrana yazar. Her adımın başında yeşil bir `✓` görmelisiniz:
+Betik beş adımı ekrana yazar. Her adımın başında yeşil bir `✓` görmelisiniz:
 
 ```
-1/4  Python sürümü aranıyor
+1/5  Python sürümü aranıyor
 ✓ Python 3.13.x bulundu
 
-2/4  Sanal ortam hazırlanıyor
+2/5  Sanal ortam hazırlanıyor
 ✓ Sanal ortam hazır (.venv)
 
-3/4  Bağımlılıklar kuruluyor
+3/5  Bağımlılıklar kuruluyor
 ✓ Bağımlılıklar kuruldu
 ✓ Testler geçti
 
-4/4  Fizibilite taraması
+4/5  Veri tazeleme ve fizibilite taraması
+
+5/5  Örüntü keşfi ve backtest
 ```
 
-Dördüncü adımda 180 günlük mum verisi indirilir; ilk seferde birkaç dakika sürebilir.
-Sonraki çalıştırmalarda veri önbellekten okunur ve çok daha hızlıdır.
+Dördüncü adımda mum verisi kontrol edilir. Daha önce indirilmiş dosyalar **tekrar
+indirilmez**; yalnızca son mumlar borsadan tamamlanır. İlk çalıştırmada bu adım
+birkaç dakika sürer.
 
-## 4. Sonucu paylaşın
+Beşinci adım internete hiç çıkmaz; diskteki veriyi okuyup örüntü taramasını
+yapar. Ekrana hangi sembolde, hangi periyotta olduğunu yazar.
 
-Betik sonucu ekrana basar ve ayrıca `fizibilite-sonuc.txt` dosyasına yazar.
-Dosyayı açmak için:
+## 4. Sonuçları paylaşın
+
+Betik iki dosya üretir:
+
+| Dosya | Ne var içinde |
+|---|---|
+| `fizibilite-sonuc.txt` | Hangi coin ve periyot matematiksel olarak anlamlı (Faz 1) |
+| `faz2-orunti-sonuc.txt` | Örüntü keşfi, istatistik ve backtest raporu (Faz 2) |
+
+Açmak için:
 
 ```bash
-open fizibilite-sonuc.txt
+open faz2-orunti-sonuc.txt
 ```
 
 İçeriği kopyalayıp Claude ile paylaşın.
+
+### Yalnızca örüntü taramasını çalıştırmak
+
+Veri zaten indirilmişse ve yalnızca taramayı tekrar çalıştırmak istiyorsanız,
+komutun sonuna `tarama` ekleyin. Bu, internete çıkan adımı tamamen atlar:
+
+```bash
+cd ~/Desktop/alsat && bash kurulum.sh tarama
+```
 
 ## "Güvenli bağlantı kurulamadı" / sertifika hatası alırsanız
 

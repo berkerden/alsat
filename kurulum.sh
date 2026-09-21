@@ -12,7 +12,14 @@ uyari()  { printf '%s! %s%s\n' "$SARI" "$1" "$SIFIR"; }
 
 cd "$(dirname "$0")" || exit 1
 
-baslik "1/4  Python sürümü aranıyor (3.12 veya üstü gerekiyor)"
+# "bash kurulum.sh tarama" veri indirme adımını atlar: Faz 2 örüntü taraması
+# internete çıkmaz, veriyi diskteki ./veri klasöründen okur.
+SADECE_TARAMA=0
+if [ "${1:-}" = "tarama" ]; then
+  SADECE_TARAMA=1
+fi
+
+baslik "1/5  Python sürümü aranıyor (3.12 veya üstü gerekiyor)"
 
 PY=""
 for aday in python3.14 python3.13 python3.12 python3 python; do
@@ -46,7 +53,7 @@ YARDIM
 fi
 tamam "$($PY --version) bulundu ($PY)"
 
-baslik "2/4  Sanal ortam hazırlanıyor"
+baslik "2/5  Sanal ortam hazırlanıyor"
 if [ ! -d .venv ]; then
   "$PY" -m venv .venv || { hata "Sanal ortam oluşturulamadı."; exit 1; }
 fi
@@ -54,7 +61,7 @@ fi
 source .venv/bin/activate || { hata "Sanal ortam etkinleştirilemedi."; exit 1; }
 tamam "Sanal ortam hazır (.venv)"
 
-baslik "3/4  Bağımlılıklar kuruluyor (ilk seferde birkaç dakika sürebilir)"
+baslik "3/5  Bağımlılıklar kuruluyor (ilk seferde birkaç dakika sürebilir)"
 python -m pip install --quiet --upgrade pip || uyari "pip güncellenemedi, devam ediliyor."
 if ! python -m pip install --quiet -e ".[dev]"; then
   hata "Bağımlılıklar kurulamadı. İnternet bağlantınızı kontrol edip tekrar deneyin."
@@ -79,18 +86,48 @@ else
   exit 1
 fi
 
-baslik "4/4  Fizibilite taraması"
-printf '   BTCUSDT ve SOLUSDT için 180 günlük veri indirilecek.\n'
-printf '   İlk çalıştırmada indirme birkaç dakika sürebilir; sonraki\n'
-printf '   çalıştırmalarda veri önbellekten okunur.\n\n'
-
 CIKTI="fizibilite-sonuc.txt"
-python -m albsat.cli.feasibility \
-  --semboller BTCUSDT SOLUSDT \
-  --periyotlar 1m 5m 15m 1h \
-  --gun 180 2>&1 | tee "$CIKTI"
+
+if [ "$SADECE_TARAMA" = "1" ]; then
+  baslik "4/5  Veri tazeleme atlandı"
+  printf '   "tarama" seçeneğiyle çalıştırıldı; internete çıkılmayacak.\n'
+  printf '   Diskteki veri kullanılacak.\n'
+else
+  baslik "4/5  Veri tazeleme ve fizibilite taraması"
+  printf '   BTCUSDT ve SOLUSDT için 204 günlük veri kontrol edilecek.\n'
+  printf '   Daha önce indirilmiş dosyalar tekrar indirilmez; yalnızca\n'
+  printf '   eksik kalan son mumlar borsadan tamamlanır.\n\n'
+
+  python -m albsat.cli.feasibility \
+    --semboller BTCUSDT SOLUSDT \
+    --periyotlar 1m 5m 15m 1h \
+    --gun 204 2>&1 | tee "$CIKTI"
+
+  # Bu adım internete çıkar ve başarısız olabilir. Örüntü taraması ise
+  # tamamen yereldir; ağ yüzünden onu da iptal etmenin anlamı yok.
+  if [ ! -s "$CIKTI" ]; then
+    uyari "Fizibilite taraması çıktı üretmedi; örüntü taramasına yine de geçiliyor."
+  fi
+fi
+
+baslik "5/5  Örüntü keşfi ve backtest (Faz 2)"
+printf '   Bu adım internete çıkmaz; diskteki veriyi okur.\n'
+printf '   BTCUSDT ve SOLUSDT, 15m ve 1h, 2-3-4 mumluk hedef pencereleri.\n'
+printf '   Birkaç dakika sürebilir; ekrana ilerleme yazar.\n\n'
+
+ORUNTU="faz2-orunti-sonuc.txt"
+python -m albsat.cli.research --rapor "$ORUNTU"
+TARAMA_SONUC=$?
 
 baslik "Bitti"
-printf 'Sonuç şu dosyaya da yazıldı: %s%s%s\n' "$KALIN" "$PWD/$CIKTI" "$SIFIR"
-printf 'Dosyayı açmak için:  open "%s"\n' "$CIKTI"
-printf '\nBu dosyanın içeriğini Claude ile paylaşın.\n'
+if [ "$SADECE_TARAMA" != "1" ] && [ -s "$CIKTI" ]; then
+  printf 'Fizibilite sonucu:   %s%s%s\n' "$KALIN" "$PWD/$CIKTI" "$SIFIR"
+fi
+if [ "$TARAMA_SONUC" = "0" ]; then
+  printf 'Örüntü raporu:       %s%s%s\n' "$KALIN" "$PWD/$ORUNTU" "$SIFIR"
+  printf '\nRaporu açmak için:  open "%s"\n' "$ORUNTU"
+  printf '\nBu dosyanın içeriğini Claude ile paylaşın.\n'
+else
+  hata "Örüntü taraması veriyi bulamadı."
+  printf 'Önce veriyi indirmek için şunu çalıştırın:  bash kurulum.sh\n'
+fi

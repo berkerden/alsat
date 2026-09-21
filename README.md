@@ -10,6 +10,8 @@ istendiğinde kullanıcı kontrolünde otomatik işlem açabilen Türkçe uygula
 
 Kapsam ve gereksinimler: [`docs/SPEC.md`](docs/SPEC.md)
 Mimari, API bulguları ve risk listesi: [`docs/FAZ0-MIMARI.md`](docs/FAZ0-MIMARI.md)
+Fizibilite sonucu: [`docs/FAZ1-FIZIBILITE.md`](docs/FAZ1-FIZIBILITE.md)
+Örüntü motorunun yöntemi: [`docs/FAZ2-ORUNTU-MOTORU.md`](docs/FAZ2-ORUNTU-MOTORU.md)
 
 ---
 
@@ -18,8 +20,8 @@ Mimari, API bulguları ve risk listesi: [`docs/FAZ0-MIMARI.md`](docs/FAZ0-MIMARI
 | Faz | Kapsam | Durum |
 |---|---|---|
 | 0 | Doküman incelemesi, mimari, kütüphane seçimi | ✅ Onaylandı |
-| 1 | Veri katmanı + **fizibilite taraması** | 🔨 Devam ediyor |
-| 2 | Örüntü keşif + backtest motoru | ⏳ |
+| 1 | Veri katmanı + **fizibilite taraması** | ✅ Onaylandı |
+| 2 | Örüntü keşif + backtest motoru | 🔨 Devam ediyor |
 | 3 | Periyot sihirbazı + öneri motoru + arayüz | ⏳ |
 | 4 | Risk motoru + kâğıt işlem + Telegram | ⏳ |
 | 5 | Emir yürütme (**Demo Mode**) | ⏳ |
@@ -36,6 +38,13 @@ Her fazın sonunda çalışma durur ve onay beklenir (SPEC.md §10).
 - Arşiv (`data.binance.vision`) indirme + SHA256 doğrulama + REST ile boşluk doldurma
 - Mum kalite raporu (eksik mum, tekrar, boşluk, sıfır hacim, geçersiz OHLC)
 - **Fizibilite taraması** ve komut satırı aracı
+- **Özellik katmanı:** mum formasyonları, indikatörler, hacim, rejim, seviye,
+  zaman etkileri ve BTC etkisi (56 boole özellik, 7 aile)
+- **Olay çalışması:** hedef/stop simülasyonu, MFE/MAE, komisyon sonrası beklenen değer
+- **İstatistik:** bootstrap güven aralığı, Benjamini–Hochberg düzeltmesi,
+  deflated Sharpe, walk-forward, çeyreklik kararlılık
+- **Backtest motoru** ve kıyas ölçütleri (rastgele giriş, al-ve-tut)
+- **Look-ahead ve repaint testleri** (`tests/test_lookahead.py`)
 
 ---
 
@@ -98,6 +107,43 @@ API anahtarıyla birlikte devreye girer.
 
 ---
 
+## Örüntü keşfi ve backtest (Faz 2)
+
+Fizibilite taraması "bu periyotta işlem matematiksel olarak mümkün mü" sorusunu
+cevaplar. Örüntü taraması bir sonraki soruyu sorar: **ölçülebilir bir avantaj
+var mı?**
+
+```bash
+python -m albsat.cli.research
+```
+
+Bu komut **internete çıkmaz**; veriyi diskteki `./veri` klasöründen okur.
+Varsayılan kapsam Faz 1 bulgusundan gelir: BTCUSDT ve SOLUSDT, yalnızca 15m ve
+1h, hedefler 2–4 mumluk pencerelerde.
+
+Tarama sırasıyla şunları yapar:
+
+1. 56 boole özellik hesaplar (yalnızca kapanmış mumlardan).
+2. Her mum için "burada girseydik ne olurdu" tablosunu çıkarır: giriş **bir
+   sonraki mumun açılışı**, hedef ve stop ATR'nin katı, çıkış maliyet sonrası.
+3. Tek özellikleri ve ikili kesişimlerini aday olarak tarar (~500–1.600 aday).
+4. Umut verenlere bootstrap güven aralığı, rastgele giriş kıyası, çeyreklik
+   kararlılık ve walk-forward uygular.
+5. Benjamini–Hochberg düzeltmesini **denenen tüm adaylar** üzerinden yapar.
+6. Kabul edilen en güvenilir örüntüyü backtest eder ve rastgele girişle
+   kıyaslar.
+
+Sonuç `faz2-orunti-sonuc.txt` dosyasına yazılır.
+
+**"Kabul edilen örüntü yok" geçerli ve beklenen bir sonuçtur.** Yüzlerce aday
+denendiğinde bazılarının şans eseri iyi görünmesi kaçınılmazdır; düzeltmenin
+işi tam olarak bunları elemektir.
+
+Yöntemin ayrıntısı ve neden böyle kurulduğu:
+[`docs/FAZ2-ORUNTU-MOTORU.md`](docs/FAZ2-ORUNTU-MOTORU.md)
+
+---
+
 ## API anahtarı oluşturma
 
 Uygulama Faz 4'e kadar **hiçbir API anahtarına ihtiyaç duymaz**; şu ana kadar yalnızca
@@ -141,7 +187,9 @@ src/albsat/
   core/        Decimal aritmetiği, filtreler, komisyon, maliyet, denetim
   exchange/    uç noktalar, HTTP, (Faz 5) imzalı REST + WebSocket API
   data/        arşiv indirme, REST boşluk doldurma, Parquet saklama, kalite
-  research/    fizibilite taraması, (Faz 2) olay çalışması ve istatistik
+  features/    mum formasyonları, indikatörler, hacim, rejim, zaman, BTC etkisi
+  research/    fizibilite, olay çalışması, istatistik, walk-forward, tarama, rapor
+  backtest/    olay tabanlı motor ve kıyas ölçütleri
   cli/         komut satırı araçları
 tests/         birim testleri
 docs/          SPEC.md ve faz dokümanları
