@@ -10,11 +10,8 @@ gerçek piyasa verisi. Ham çıktı: `faz2-oruntu-sonuc.txt`.
 
 ## 1. Tek cümlelik sonuç
 
-**Alınacak örüntü yok.** 12 kombinasyonun hiçbirinde, çoklu test
-düzeltmesinden geçen bir "al" kuralı çıkmadı. Toplam 6.372 aday denendi.
-
-Tek bir istisna kaçınma listesinde çıktı ve onun da kalmaması gerekiyor;
-3. bölüm bunu anlatıyor.
+**Kabul edilen örüntü yok** — ne alınacaklar ne de kaçınılacaklar listesinde,
+12 kombinasyonun hiçbirinde. Toplam 6.372 aday denendi.
 
 Bu bir arıza değil, bir ölçüm sonucudur. Motorun doğru çalıştığının kanıtı
 bulduğu örüntüler değil, bulmadıklarıdır: sentetik veriye bilerek konmuş bir
@@ -24,57 +21,52 @@ kapatınca sonraki veriden etkilenmiyor. Üçü de `tests/test_scan.py` içinde.
 ## 2. Sonucun ne kadar net olduğu
 
 Bu, "kıl payı kaçırdı" türü bir sonuç değil. Her bölüm, incelediği adaylar
-içindeki **en küçük ham p-değerini** ve o bölümde tek bir örüntünün kabul
-edilmesi için gereken eşiği yazıyor:
+içindeki **en küçük ham p-değerini** ve tek bir örüntünün kabul edilmesi için
+gereken eşiği yazıyor. Eşik koşunun tamamı üzerinden: `0,10 / 6.372 =
+0,0000157`.
 
-| Seri | En küçük ham p | Gereken eşik | Uzaklık |
-|---|---:|---:|---:|
-| BTCUSDT 15m, 2 mum | 0,00266 | 0,00018 | 15 kat |
-| BTCUSDT 15m, 3 mum | 0,00009 | 0,00018 | **eşiğin altında** |
-| BTCUSDT 15m, 4 mum | 0,00133 | 0,00018 | 7 kat |
-| BTCUSDT 1h, 2 mum | 0,04330 | 0,00028 | 155 kat |
-| BTCUSDT 1h, 3 mum | 0,07595 | 0,00028 | 273 kat |
-| BTCUSDT 1h, 4 mum | 0,07262 | 0,00026 | 282 kat |
-| SOLUSDT 15m, 2 mum | 0,01066 | 0,00014 | 77 kat |
-| SOLUSDT 15m, 3 mum | 0,03664 | 0,00014 | 268 kat |
-| SOLUSDT 15m, 4 mum | 0,04530 | 0,00014 | 335 kat |
-| SOLUSDT 1h, 2 mum | 0,01199 | 0,00022 | 55 kat |
-| SOLUSDT 1h, 3 mum | 0,01865 | 0,00021 | 91 kat |
-| SOLUSDT 1h, 4 mum | 0,05596 | 0,00021 | 269 kat |
+| Seri | En küçük ham p | Eşiğin kaç katı |
+|---|---:|---:|
+| BTCUSDT 15m, 2 mum | 0,00266 | 170 |
+| BTCUSDT 15m, 3 mum | 0,00009 | 6 |
+| BTCUSDT 15m, 4 mum | 0,00133 | 85 |
+| BTCUSDT 1h, 2 mum | 0,04330 | 2.759 |
+| BTCUSDT 1h, 3 mum | 0,07595 | 4.839 |
+| BTCUSDT 1h, 4 mum | 0,07262 | 4.627 |
+| SOLUSDT 15m, 2 mum | 0,01066 | 679 |
+| SOLUSDT 15m, 3 mum | 0,03664 | 2.335 |
+| SOLUSDT 15m, 4 mum | 0,04530 | 2.887 |
+| SOLUSDT 1h, 2 mum | 0,01199 | 764 |
+| SOLUSDT 1h, 3 mum | 0,01865 | 1.189 |
+| SOLUSDT 1h, 4 mum | 0,05596 | 3.566 |
 
-On iki bölümün on birinde en iyi aday, eşiğin 7 ila 335 katı uzağında. Bu
-aralıkta "düzeltme yüzünden elendi" demek yanlış olur: düzeltme hiç
-uygulanmasaydı bile çoğu geçemezdi.
+En yakın aday bile eşiğin 6 katı uzağında; on bir bölümde 85 ila 4.627 katı.
 
-## 3. Eşiğin altında kalan tek bölüm
+**Asimetri — bulgu değil, testin kendisi.** Raporda "alınacaklar" listesinde
+tek bir bölümde bile düzeltme öncesi dikkat çeken aday yok; "kaçınılacaklar"
+listesinde dokuz bölümde var. Bu, piyasada aşağı yönlü bilgi olup yukarı
+yönlü olmadığı anlamına **gelmez**. İki testin çıtası farklı: bir "al"
+örüntüsünün sayılması için maliyet ödendikten sonra artıda kalması gerekiyor,
+yani brüt kenarının %0,28'i aşması; bir "kaçın" örüntüsü içinse brüt getirinin
+sıfırın altında olması yetiyor. Aynı çıtaya getirmenin yolu maliyeti tamamen
+kaldırmak — teşhis turu tam olarak bunu yapıyor.
 
-BTCUSDT 15m, 3 mumluk pencere, **kaçınılacaklar** listesinde bir örüntü kabul
-edildi: *kapanış üst Bollinger bandının üstünde + fiyat yükselmiş ama hacim
-ortalamanın altında*. Ayrılmış dönemde 56 bağımsız olay, p=0,0001, bölüm içi
-düzeltmeyle q=0,05.
+## 3. Ara koşuda kabul edilen tek örüntüye ne oldu
 
-Buna dayanarak bir şey yapılmamalı, üç sebeple:
+İkinci koşuda (düzeltme hâlâ bölüm içindeyken) BTCUSDT 15m 3 mumda bir
+kaçınma örüntüsü kabul edilmişti: *kapanış üst Bollinger bandının üstünde +
+fiyat yükselmiş ama hacim ortalamanın altında*, p=0,0001, bölüm içi q=0,05.
 
-**1. Bu, şansın üreteceği sayının kendisi.** Koşuda 12 bölüm var ve her biri
-kendi içinde %10 yanlış buluş payıyla düzeltiliyor. Ortada hiçbir şey yokken
-bile beklenen buluş sayısı `12 × 0,10 ≈ 1,2`. Bulunan: 1. Bölüm içi düzeltme
-bunu göremez çünkü kaç bölüm çalıştırıldığını bilmez.
+Koşuda 12 bölüm var ve her biri kendi içinde %10 yanlış buluş payıyla
+düzeltiliyordu. Ortada hiçbir şey yokken bile beklenen buluş sayısı
+`12 × 0,10 ≈ 1,2`. Bulunan: 1. Bölüm içi düzeltme bunu göremez çünkü kaç
+bölüm çalıştırıldığını bilmez.
 
-Motor bu yüzden değiştirildi: kabul kararı artık koşunun tamamı üzerinden
-veriliyor (`scan.apply_global_correction`). Raporun kendi sayılarıyla
-hesaplandığında bu örüntü o düzeltmeden geçmiyor — koşu genelinde deneme
-sayısı 6.372, en küçük p-değerinin geçmesi için gereken eşik
-`0,10 / 6.372 = 0,0000157`, örüntünün p-değeri ise 0,00009. Yaklaşık altı kat
-uzakta.
-
-**2. Komşu pencerelerde izi yok.** Aynı sembolde aynı periyotta 2 ve 4 mumluk
-pencerelerde görünmüyor. Gerçek bir piyasa davranışı olsaydı yan pencerelerde
-de iz bırakması beklenirdi; yalnızca 3'te çıkması tesadüfün imzasıdır.
-
-**3. İşe yararlığı sınırlı.** Ölçülen etki brüt %-0,14; maliyet %0,28. Ters
-yönde işlem yapmaya yetmez (zaten kapsam dışı), yalnızca "bu durumda alma"
-filtresi olabilirdi — ve 14.371 mumun 129'unu kapsıyor. Taban çizgisini
-değiştirmez.
+Kabul kararı koşunun tamamı üzerinden verilir hale getirildi
+(`scan.apply_global_correction`) ve üçüncü koşuda bu örüntünün düzeltilmiş
+q-değeri **0,58** çıktı; artık kabul edilmiyor. Komşu pencerelerde de izi yok:
+aynı sembolde 2 ve 4 mumluk pencerelerde yalnızca "dikkat çekenler" listesinde,
+eşiğin 170 ve 85 katı uzağında görünüyor.
 
 ## 4. Sayılar
 
@@ -166,10 +158,11 @@ hesaplanıyordu. Bu, seçimin kendisini kanıt saymak demek. Artık kabul karar�
 **yalnızca ayrılmış dönemden** (doğrulama + test, son %50) hesaplanıyor.
 
 **3. Düzeltmenin bölüm içinde kalması.** 12 bölüm ayrı ayrı düzeltiliyordu;
-bu, hiçbir şey yokken bile ortalama 1,2 buluş üretir. Kabul kararı artık
-koşunun tamamı üzerinden veriliyor. Düzeltme kör bir sertleştirme değil:
-bölümlerin hepsinde görünen gerçek bir kenar sıralamada üstte kaldığı için
-hayatta kalır, yalnızca tek bölümde parlayan bir şans elenir.
+bu, hiçbir şey yokken bile ortalama 1,2 buluş üretir ve tam olarak bir tane
+üretti (3. bölüm). Kabul kararı artık koşunun tamamı üzerinden veriliyor.
+Düzeltme kör bir sertleştirme değil: bölümlerin hepsinde görünen gerçek bir
+kenar sıralamada üstte kaldığı için hayatta kalır, yalnızca tek bölümde
+parlayan bir şans elenir.
 
 Ayrıca raporlamada bir kusur: kararlılık kontrolü yönü hesaba katmıyordu, bu
 yüzden bir kaçınma örüntüsünün her dönemde ekside olması — yani tam olarak
