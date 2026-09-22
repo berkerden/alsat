@@ -1,11 +1,13 @@
-# Devir notu — Faz 2'den Faz 3'e
+# Devir notu — Faz 3'ten Faz 4'e
 
 22 Eylül 2026. Bu not, koda ve diğer belgelere bakarak öğrenilemeyecek
 şeyleri yeni oturuma aktarmak içindir. Şartname `SPEC.md`, mimari kararlar
 `docs/FAZ0-MIMARI.md`, fizibilite sonucu `docs/FAZ1-FIZIBILITE.md`,
-**Faz 2 sonucu `docs/FAZ2-SONUC.md`**, yöntem `docs/FAZ2-ORUNTU-MOTORU.md`.
+**Faz 2 sonucu `docs/FAZ2-SONUC.md`**, Faz 2 yöntemi
+`docs/FAZ2-ORUNTU-MOTORU.md`, **Faz 3 yöntemi
+`docs/FAZ3-ONERI-MOTORU.md`**.
 
-## Berk nasıl çalışıyor
+## 1. Berk nasıl çalışıyor
 
 * Mac kullanıyor, kod `~/Desktop/alsat` altında. Terminal, git ve GitHub
   akışları ona tanıdık değil.
@@ -13,143 +15,161 @@
   tutarak anlatılmalı. Çıplak komut listesi verme.
 * Güncelleme komutu tek satıra indirgendi:
   `cd ~/Desktop/alsat && git pull && bash kurulum.sh`
-  Sonuna `tarama` eklenirse internete çıkan adım atlanır, `teshis` eklenirse
-  ayrıca maliyetsiz teşhis turu da çalışır.
+  Sonuna eklenebilecek seçenekler:
+
+  | Seçenek | Ne yapar |
+  |---|---|
+  | (boş) | Veriyi tazeler + fizibilite + örüntü taraması |
+  | `tarama` | İnternete çıkmaz; yalnızca örüntü taraması |
+  | `teshis` | Tarama + maliyetsiz teşhis turu |
+  | `arayuz` | Tarama yapmaz; kurulumu kontrol edip arayüzü açar |
+
 * Uzun süren her adım ekrana ilerleme yazmalı. Sessiz ekrana bakınca
   takıldığını sanıyor.
 * Uzun çıktıları sohbete yapıştıramıyor; dosya olarak yolluyor.
 * Kod GitHub'da `berkerden/alsat`, `main` dalında duruyor; Berk'in
-  bilgisayarında da yedeği var.
+  bilgisayarında da yedeği var. Doğrudan `main`'e gönderiliyor.
 
-## Berk şu ana kadar neyi çalıştırdı
-
-* Faz 1 fizibilite taraması: bir kez, gerçek veriyle. Veri
-  `~/Desktop/alsat/veri` altında indirilmiş ve doğrulanmış durumda
-  (1 Mart – 21 Eylül 2026, sekiz seri, %100 eksiksiz).
-* Faz 2 örüntü taraması: üç kez (motor iki kez düzeltildi arada).
-  Sonuncusu kesin kayıt.
-* Maliyetsiz teşhis turu: bir kez.
-
-Yeniden indirtme, yeniden çalıştırtma gerekmiyor; sonuçlar belgelerde.
-
-## Eldeki komut satırı araçları
-
-| Araç | Ne yapar | Ağa çıkar mı |
-|---|---|---|
-| `albsat-fizibilite` | Veri indirir, kalite raporu ve fizibilite taraması | Evet |
-| `albsat-oruntu` | Örüntü keşfi, istatistik, backtest, rapor | **Hayır** |
-| `albsat-oruntu --maliyetsiz` | Aynısı, maliyet sıfır sayılarak (teşhis) | **Hayır** |
-| `albsat-tls-teshis` | Sertifika zinciri teşhisi | Evet |
-
-`bash kurulum.sh` hepsini sırayla sarmalıyor; `tarama` ve `teshis`
-seçenekleri yukarıda.
-
-## Bu çalışma ortamının kısıtları
+## 2. Çalışma ortamının kısıtları ve doğrulama kuralı
 
 * Ağ politikası **api.binance.com ve data.binance.vision adreslerini
   engelliyor** (proxy CONNECT'e 403 dönüyor). Buradan gerçek piyasa verisi
-  indirilemez, tarama gerçek sayılarla çalıştırılamaz. Gerçek veri gerektiren
-  her adımı Berk kendi Mac'inde çalıştırıyor, çıktıyı sohbete yapıştırıyor.
-* PyPI erişilebilir, kurulum ve testler burada çalışır.
+  indirilemez. Gerçek veri gerektiren her adımı Berk kendi Mac'inde
+  çalıştırıyor, çıktıyı sohbete yolluyor.
+* PyPI erişilebilir; kurulum ve testler burada çalışır.
 * Kapsayıcının varsayılan `python3`'ü 3.11 olabilir; proje 3.12+ istiyor.
-  Sanal ortamı `python3.12 -m venv` ile kur.
-* Bu oturumların yetkisi yeni GitHub deposu açmayı kapsamıyor; depoyu Berk
-  açtı, `add_repo` ile bağlandı.
+* Bu oturumların yetkisi yeni GitHub deposu açmayı kapsamıyor.
 
-## Doğrulama kuralı
+**Doğrulama kuralı:** Berk'e "çalıştır" demeden önce depoyu **geçici bir
+dizine temiz klonlayıp** kurulumu ve testleri orada baştan çalıştır.
+Buradaki çalışma dizininde testlerin geçmesi kanıt değil: 21 Eylül'de
+`.gitignore` içindeki sabitlenmemiş `data/` kuralı `src/albsat/data/`
+kaynak paketini yuttu, burada testler geçti, Berk'in bilgisayarında
+`ModuleNotFoundError` ile patladı.
 
-Berk'e "çalıştır" demeden önce depoyu **geçici bir dizine temiz klonlayıp**
-kurulumu ve testleri orada çalıştır. Buradaki çalışma dizininde testlerin
-geçmesi kanıt değil: 21 Eylül'de `.gitignore` içindeki sabitlenmemiş `data/`
-kuralı `src/albsat/data/` kaynak paketini yuttu, burada testler geçti,
-Berk'in bilgisayarında `ModuleNotFoundError` ile patladı.
+Faz 3 böyle doğrulandı: temiz klon → `bash kurulum.sh arayuz` → Python
+bulundu, sanal ortam kuruldu, bağımlılıklar indi, 335 test geçti, arayüz
+açıldı; sonra sentetik veriyle tarama çalıştırılıp arayüzün beş sekmesi de
+tarayıcıda hatasız gezildi.
 
-## Kolay tekrar düşülecek tuzaklar
+**Arayüzü doğrulamanın yolu:** Chromium bu ortamda kurulu ve Playwright
+onu buluyor (`executable_path="/opt/pw-browsers/chromium"`). Sayfayı gerçek
+tarayıcıda açıp konsol hatalarını, sekmeleri ve mobil genişlikte yatay
+taşmayı ölçmek mümkün; "endpoint 200 döndü" tek başına sayfanın çalıştığını
+göstermiyor (bir JavaScript hatası bunu geçer).
 
-* **Arşiv zaman damgaları mikrosaniye.** Binance 1 Ocak 2025'ten itibaren
-  `data.binance.vision` SPOT arşivlerinde mikrosaniye, `GET /api/v3/klines`
-  ise milisaniye veriyor. `albsat.data.klines.normalize_epoch_ms` bunu
-  çözüyor; zaman damgası okuyan yeni kod da oradan geçmeli. Aksi halde
-  ardışık her mum çifti "boşluk" sanılır (bir kez oldu: 293.759 sahte
-  boşluk).
-* **Berk'in ağında HTTPS trafiğini yeniden imzalayan bir katman var.**
-  Uygulama bu yüzden `truststore` ile macOS güven deposunu kullanıyor.
-  Sertifika doğrulaması **hiçbir koşulda, geçici olarak bile kapatılmayacak**;
-  gerçek emir gönderecek bir uygulamada araya girme riski doğurur. Teşhis
-  aracı: `albsat-tls-teshis`.
-* **Arşivler gün/ay bittikten sonra yayımlanır.** Bugünün dosyası kesin 404
-  döner; `plan_archives` bugünü plana almıyor, kalanı REST tamamlıyor.
-* **Kapanmamış mum tahmine giremez** (SPEC §11). Tek kapı
-  `albsat.data.klines.closed_only`.
-* **Fiyat, miktar ve bakiyede `float` yok, `Decimal` var** (SPEC §3).
-  `albsat.core.money` `float` alırsa reddediyor.
+## 3. Berk'in Faz 3'te verdiği karar — kendi cümlesiyle
 
-## Güvenlik
+*"a ile devam edip b fonksiyonunu da ekleyerek öneri veya lazım olduğunda
+kullanılabilecek gibi ek şekilde yapabilir miyiz"*
 
-* Sırlar Berk'in bilgisayarından çıkmıyor: anahtar macOS Keychain'de, `.env`
-  yalnızca anahtarın yerini söylüyor, ortam değişkenine sır konmuyor.
-* Berk 21 Eylül 2026'da sohbete bir Binance API anahtarı yapıştırdı. İptal
-  etmesi söylendi; anahtar kullanılmadı, hiçbir dosyaya, commit'e veya
-  hafızaya yazılmadı. Anahtar isteme, yazdırma, dosyaya koyma.
-* Gerçek para ile emir gönderecek her adım öncesinde Berk'e sorulacak.
-  Uygulama her zaman "Sadece Öneri" modunda açılıyor.
+**A — şartnamedeki Faz 3:** periyot sihirbazı, öneri motoru, Sadece Öneri
+arayüzü. **B eki — ana akışın yanında, lazım olunca açılan bölüm:**
+izleme, maliyet/risk paneli, disiplinli alım. İkisi de yapıldı.
 
-## Faz 2 ne buldu (tek paragraf)
+Berk'in çalışma yöntemi hakkındaki kuralı (21 Eylül): *"Yeni bir oturum ile
+yeni fazlara geçiş yap. Bağlam şişip kalite düşmesin bu sayede. Her oturumda
+öğrendiğimiz, dikkat ettiğimiz, sonraki faza aktarılması gerekecek bilgileri
+toparla ve sonraki faz için sonraki oturuma taşı, eksik bilgi olmadan devam
+etmiş olsun."*
 
-Hiçbir şey, ve bu ölçülmüş bir sonuç. BTCUSDT + SOLUSDT, 15m + 1h, 2/3/4
-mumluk pencerelerde 6.372 aday denendi; çoklu test düzeltmesinden geçen
-örüntü çıkmadı. Ardından maliyet tamamen sıfır sayılıp arama tekrarlandı
-(9.215 aday) — yine sıfır. Maliyet kaldırıldığında rastgele işlem yapmak
-yazı turaya dönüşüyor (denemelerin %39,5–%52'si artıda, ortalama sıfır),
-yani maliyetli koşudaki %-0,22'nin tamamı maliyetti ve altında kenar yok.
-İstatistiksel disiplin tamamen bırakılıp 9.215 aday içinden en iyi görünen
-seçilse bile en yüksek değer işlem başına %+0,2304; maliyet %0,28, BNB
-indirimiyle %0,23. **Maliyeti düşürmek bir yol açmıyor.** Ayrıntı ve
-sayılar `docs/FAZ2-SONUC.md`.
+**Faz 3 onayı Berk'te.** Onaylanmadan Faz 4'e geçilmez (SPEC §10).
 
-Ölçülen her bölümde en iyi sonucu al-ve-tut verdi (BTCUSDT %+28,8,
-SOLUSDT %+41,1, komisyon sonrası). Bu bir yatırım tavsiyesi değil, bu veri
-kümesindeki bir ölçüm sonucudur; ama Faz 3 kapsamını Berk bu bulguyu
-bilerek seçti.
+## 4. Faz 3 ne yaptı (tek paragraf)
 
-## Faz 3 kapsamı — Berk'in kararı (22 Eylül 2026)
+Faz 2 ile Faz 3 arasına makine okunur bir kural deposu
+(`veri/kurallar.json`) kondu; tarama artık kabul ettiği kuralları, kabul
+etmediği adayları ve bölüm özetlerini ayrı ayrı yazıyor. Öneri motoru
+yalnızca **kabul edilmiş** kuralları okuyor ve kural olmadığı için ekranda
+"önerilecek kural yok" yazıp nedenini sayılarla gösteriyor. Kart şablonunun
+eksiksizliği ve marj aritmetiği, elle doğrulanabilir bir örnek kuralla
+kanıtlandı; o kartın üstünde "öneri değildir" yazıyor. Yanına periyot
+sihirbazı, sinyal günlüğü, pozisyon büyüklüğü hesabı ve B eki (izleme,
+maliyet/risk, disiplinli alım) geldi. Hepsi yalnızca 127.0.0.1'e bağlanan
+yerel bir arayüzden sunuluyor; emir gönderen kod yok. Ayrıntı ve gerekçeler
+`docs/FAZ3-ONERI-MOTORU.md`.
 
-Berk'in kendi cümlesi: *"a ile devam edip b fonksiyonunu da ekleyerek öneri
-veya lazım olduğunda kullanılabilecek gibi ek şekilde yapabilir miyiz"*.
+## 5. Eldeki komut satırı araçları
 
-**A — şartnamedeki Faz 3.** Periyot sihirbazı, öneri motoru, Sadece Öneri
-arayüzü (SPEC §10). Öneri motoru Faz 2'nin **kabul ettiği** kuralları okur.
-Şu an kabul edilmiş kural yok, bu yüzden dürüst çıktısı "önerilecek kural
-yok" olacak ve nedenini gösterecek: taban çizgisi, maliyet eşiği, en iyi
-adayın eşikten uzaklığı.
+| Araç | Ne yapar | Ağa çıkar mı |
+|---|---|---|
+| `albsat-fizibilite` | Veri indirir, filtreleri önbelleğe yazar, fizibilite taraması | Evet |
+| `albsat-oruntu` | Örüntü keşfi, istatistik, backtest, rapor, **kural deposu** | **Hayır** |
+| `albsat-oruntu --maliyetsiz` | Aynısı, maliyet sıfır sayılarak (teşhis) | **Hayır** |
+| `albsat-arayuz` | Sadece Öneri arayüzü, yalnızca 127.0.0.1 | **Hayır** |
+| `albsat-tls-teshis` | Sertifika zinciri teşhisi | Evet |
 
-**B eki — aynı uygulamanın içinde, lazım olunca açılan ek bölüm.** Berk'e
-sunulan B seçeneğinin tanımı şuydu: sık al-sat yerine **izleme, maliyet/risk
-paneli ve disiplinli alım**. Ana akış değil, ek yetenek.
+## 6. Faz 3'te öğrenilen, koda bakarak görülmeyecek tuzaklar
 
-Bunun dışına çıkma. Kapsamı genişleten her fikir önce Berk'e sorulur.
+1. **`CostAssumptions` içinde birimler karışık, bilerek.** `maker_orani` ve
+   `taker_orani` **orandır** ("0.001" = %0,1), çünkü `fees.flat_table` oran
+   bekliyor. `spread_yuzde`, `kayma_yuzde`, `guvenlik_payi_yuzde`,
+   `minimum_hedef_yuzde` ise **yüzdedir**. `maker_yuzde`/`taker_yuzde`
+   hesaplanmış özellik olarak duruyor. Bunları karıştırmak 100 katlık sessiz
+   bir hata üretir; bir kez üretti. `test_kural_deposu.py` içinde testi var.
+2. **İsabet oranı ile örneklem sayısı eşleşmeli.** `isabet_orani` **tüm**
+   olaylar (`olay`) üzerinde ölçülüyor; `bagimsiz_olay` üst üste binmeyen
+   olay sayısı, `kabul_ornegi` ise kabul kararının dayandığı ayrılmış
+   örneklem. Kartta "n" olarak `olay` yazılıyor ve bağımsız sayı ayrıca
+   gösteriliyor. Güven skorundaki "Bağımsız örnek" bileşeni `kabul_ornegi`'ne
+   bakıyor. Üçünü karıştırmak kolay.
+3. **Veri kontrolü kural kontrolünden önce gelir.** Veri hiç yokken
+   "önerilecek kural yok" demek, taramanın başka bir kapsamda ölçtüğü
+   sayıları o sembolün cevabı gibi gösteriyordu. `signals.recommend` içindeki
+   dal sırası bilerek böyle.
+4. **Sinyal sıklığı toplanmaz.** Üst üste binen kuralların sinyalleri
+   toplanırsa periyot sihirbazında günde 90 sinyal gibi anlamsız bir sayı
+   çıkar. Doğru sayı en çok sinyal üreten **tek** kuralın sıklığı.
+5. **Bağlayıcı kural eşitlikte "bütçe" sayılır.** Risk kuralı ve bütçe aynı
+   miktarı veriyorsa "bütçenin tamamı kullanılıyor" demek doğru olandır;
+   kullanıcının elinde başka para kalmıyor.
+6. **`Decimal` bölmesi 28 basamak üretir.** `core.money.clamp_decimals`
+   yalnızca **kırpar**, `normalize()` çağırmaz: `normalize()` `1E+2` ve
+   `9.9E-7` gibi bilimsel gösterim üretiyordu. Okunur biçime çevirme işi
+   serileştirme katmanında (`api.serialize.format_for_api`).
+7. **Parasal her değer arayüze metin olarak gider.** `float` yasak (SPEC §3),
+   `Decimal` JSON'a verilemez. Arayüz gelen metni aritmetiğe sokmuyor.
+   `test_arayuz.py` bunu ve bilimsel gösterim olmamasını kontrol ediyor.
+8. **Tur maliyetleri araştırmayla birebir aynı eşlenmeli.** Giriş her iki
+   turda taker, hedefe çıkış maker, stopa çıkış taker (FAZ0 Risk #4).
+   `signals.cost_trips` ile `cli/research.py` aynı eşlemeyi kullanıyor;
+   ikisi ayrışırsa kart kendi kanıtıyla çelişir.
+9. **Örnek kart kendi durum koduyla gelir** (`ornek`). Gerçek durumlardan
+   ayrı bir değer taşıyor ki arayüz onu yanlışlıkla öneri diye çizmesin.
 
-### Kabul kriteriyle ilgili bir gerilim, baştan bil
+## 7. Danışılmadan değiştirilmemesi gereken seçilmiş varsayılanlar
 
-SPEC §10 Faz 3'ün kabul kriteri: *"Öneri kartları eksiksiz; marjlar komisyon
-sonrası doğru."* Kabul edilmiş kural olmadığı için ortada gösterilecek öneri
-kartı yok. Bu kriteri "kart uydur" diye okuma. Doğru okuma: **kart şablonu
-eksiksiz ve marj hesabı doğru olmalı**, yani bir kural çıktığında kart
-eksiksiz doldurulabilmeli ve komisyon sonrası marj doğru çıkmalı. Kartın
-doğruluğu sentetik/örnek bir kuralla gösterilebilir; kullanıcıya sunulan
-ekranda ise dürüst "önerilecek kural yok" durumu görünür. Bunu Berk'e Faz 3
-sonunda açıkça anlat.
+1. **"İncelenen adaylar" öneri kartına dönüşmez.** Eşiği geçmemiş adaylar
+   ayrı bir bölümde, "kabul EDİLMEDİ" notuyla listeleniyor. Kart haline
+   getirmek, Faz 2'nin engellemek için var olduğu hatayı arayüzden geri
+   sokmak olur.
+2. **Teşhis turundan çıkan kural deposu öneri üretmez.** Motor kabul edilmiş
+   kural içerse bile reddediyor; sıfır maliyetle "kârlı" çıkan bir örüntü
+   gerçekte zarar ettirir.
+3. **Hedef 2 uydurulmaz.** Ölçülmüş medyan MFE Hedef 1'in altındaysa ikinci
+   hedef **yoktur** ve sebebi kartta yazar.
+4. **Borsa filtreleri yoksa varsayılan uydurulmaz.** Kart "filtreler elimde
+   yok" der ve fiyatların yuvarlanmadığını yazar.
+5. **Sunucu yalnızca 127.0.0.1.** Dinlenecek adres bilerek bayrak olarak
+   sunulmuyor; bir bayrakla 0.0.0.0'a açılabilen yerel arayüz er ya da geç
+   açılır. `test_arayuz.py` bunu test ediyor.
+6. **Kapsam A ile daraltıldı:** BTCUSDT ve SOLUSDT, yalnızca 15m ve 1h.
+   1m ve 5m kapsam dışı; sessizce geri getirme.
 
-### Faz 3 için seçilmiş varsayılan (Berk'e danışmadan değiştirme)
+## 8. Şartnameden sapma — Berk'in onayına sunuldu
 
-Öneri motoru **"düzeltme öncesi dikkat çekenler" listesini öneri kartı
-olarak göstermez.** Onlar rapora bilerek "kanıt sayılmaz" notuyla konuyor;
-arayüzde kart haline getirmek, Faz 2'nin engellemek için var olduğu hatayı
-kullanıcı arayüzünden geri sokmak olur. Gösterilecekse ayrı bir "incelenen
-adaylar" bölümünde, kabul edilmediği açıkça yazılarak gösterilir. Berk
-aksini isterse o zaman konuşulur.
+SPEC §3 arayüz için "React + Vite" öneriyor ve *"gerekçeyle
+değiştirebilirsin"* diyor. Değiştirildi: arayüz, Python paketinin içinden
+servis edilen **derleme adımı olmayan** düz HTML/CSS/JS. Gerekçe: React +
+Vite kullanıcıdan Node ve npm kurmasını ister; Berk terminale alışık değil ve
+ikinci bir kurulum zinciri kurulumun en kırılgan yerini iki katına
+çıkarırdı. Mum grafiği de bağımlılıksız (`grafik.js`, ~120 satır canvas);
+hazır kütüphane ya npm ya CDN demekti, CDN internetsiz çalışmaz.
 
-## Tarama motorunun güvencesi — bozmadan önce oku
+**Berk bu sapmayı Faz 3 onayında gördü.** İtiraz ederse React'e geçmek
+mümkün; API tarafı değişmez.
+
+## 9. Tarama motorunun güvencesi — bozmadan önce oku
 
 Motorun doğruluğunun tek dayanağı üç testtir (`tests/test_scan.py`):
 
@@ -159,65 +179,102 @@ Motorun doğruluğunun tek dayanağı üç testtir (`tests/test_scan.py`):
 3. Eğitim dilimi bittikten sonraki her şey bozulduğunda aday kümesi
    **harfi harfine aynı** kalmalı (keşif geleceğe bakmıyor).
 
-Buna `tests/test_lookahead.py` içindeki 17 test ekleniyor: geleceği bozma,
-kesip yeniden hesaplama, girişin bir sonraki mumun açılışı olması, kapanmamış
-mumun tabloya hiç girmemesi.
+Buna `tests/test_lookahead.py` içindeki 17 test ekleniyor. Faz 3'te bunların
+üstüne şunlar geldi:
 
-Bu testlerden biri kırmızıya dönerse rapor güvenilirliğini kaybeder. Motora
-dokunan her değişiklikte hepsi yeşil kalmalı; testi değiştirerek geçirmek
-çözüm değil.
+| Dosya | Ne koruyor |
+|---|---|
+| `test_kural_deposu.py` | Deponun gidiş-dönüşü; her kanıt alanı yolda kaybolmuyor |
+| `test_card.py` | Kart aritmetiği, kâğıt hesabına karşı |
+| `test_sizing.py` | Bağlayıcı kural, stepSize kaybı, komisyon dahil stop zararı |
+| `test_oneri_motoru.py` | "Kural yok" ekranının içeriği, teşhis deposu reddi |
+| `test_ek_araclar.py` | Panel, plan, izleme, sihirbaz, günlük (stop öncelikli sonuçlandırma) |
+| `test_arayuz.py` | Her uç ayakta, parasal değerler metin, emir gönderen uç yok |
 
-## Faz 2'den öğrenilen, koda bakarak görülmeyecek tuzaklar
+Bu testlerden biri kırmızıya dönerse çıktı güvenilirliğini kaybeder. Testi
+değiştirerek geçirmek çözüm değil.
 
-1. **Çoklu test düzeltmesi bölüm içinde kalmamalı.** Bir koşuda 12 bölüm var
-   (2 sembol × 2 periyot × 3 pencere); her biri kendi içinde %10 payla
-   düzeltilirse, ortada hiçbir şey yokken bile ortalama 1,2 "buluş" çıkar.
-   Bu teorik değil, oldu: tam olarak bir örüntü kabul edildi. Kabul kararı
-   artık `scan.apply_global_correction` ile koşunun tamamı üzerinden
-   veriliyor. Yeni bir tarama kipi eklenirse bu geçiş atlanmamalı.
-2. **Keşif ile sınama aynı veriyi paylaşmamalı.** Adaylar yalnızca eğitim
-   diliminden seçilir, kabul p-değeri yalnızca ayrılmış dönemden hesaplanır.
-   Aksi hâlde seçimin kendisi kanıt sayılır.
-3. **Bootstrap p-değerinin tabanı `1/(yineleme+1)`.** Düzeltme eşiği bunun
-   altındaysa gerçekten güçlü bir örüntü hak ettiği halde reddedilir.
-   `stats.required_iterations` bunu çözüyor.
-4. **Yön körü kontrol yazma.** Kaçınma örüntüsünde ekside olmak doğru
-   yöndür; kararlılık kontrolü bir süre bunu uyarı olarak yazdı.
-5. **Al ve kaçın testlerinin çıtası eşit değil.** "Al" örüntüsü maliyeti
-   aşmak zorunda, "kaçın" örüntüsü yalnızca sıfırın altında olmak zorunda.
-   Raporda kaçınma tarafında daha çok aday görünmesi bir piyasa bulgusu
-   değil, bu asimetridir.
+## 10. Faz 2'den taşınan tuzaklar (hâlâ geçerli)
 
-## Yarım kalanlar ve Faz 3'e taşınan uyarılar
+1. **Çoklu test düzeltmesi bölüm içinde kalmamalı.** Koşunun tamamı
+   üzerinden veriliyor (`scan.apply_global_correction`). Yeni bir tarama kipi
+   eklenirse bu geçiş atlanmamalı.
+2. **Keşif ile sınama aynı veriyi paylaşmamalı.** Adaylar eğitim
+   diliminden, kabul p-değeri ayrılmış dönemden.
+3. **Bootstrap p-değerinin tabanı `1/(yineleme+1)`**
+   (`stats.required_iterations`).
+4. **Yön körü kontrol yazma.** Kaçınma örüntüsünde ekside olmak doğru yön.
+5. **Al ve kaçın testlerinin çıtası eşit değil.** "Al" maliyeti aşmak
+   zorunda, "kaçın" yalnızca sıfırın altında olmak zorunda.
+6. **Arşiv zaman damgaları mikrosaniye** (1 Ocak 2025'ten beri),
+   REST milisaniye. Tek kapı `klines.normalize_epoch_ms`.
+7. **Arşivler gün/ay bittikten sonra yayımlanır.** Bugünün dosyası 404 döner.
+8. **Kapanmamış mum tahmine giremez.** Tek kapı `klines.closed_only`.
+9. **Fiyat, miktar ve bakiyede `float` yok, `Decimal` var** (SPEC §3).
+
+## 11. Yarım kalanlar ve Faz 4'e taşınan uyarılar
 
 1. **Komisyon oranı hâlâ varsayım** (%0,1 / %0,1). Gerçek oran imzalı
-   `GET /api/v3/account/commission` ile Faz 4'te ölçülecek; Faz 1 ve Faz 2
-   tablolarındaki her sayı o zaman yenilenmeli. Teşhis turu gösterdi ki
-   gerçek oran daha düşük olsa bile işaret değişmiyor.
+   `GET /api/v3/account/commission` ile **Faz 4'te** ölçülecek. Ölçülünce
+   Faz 1 tablosu, Faz 2 taraması **ve** kural deposu yeniden üretilmeli;
+   öneri kartı maliyeti kural deposundan okuduğu için kart kendiliğinden
+   düzelir. Teşhis turu gösterdi ki gerçek oran daha düşük olsa bile işaret
+   değişmiyor.
 2. **BNB ile komisyon ödeme kararı verilmedi.** Varsayılan temkinli
-   (indirimsiz). BNB bakiyesi tutmayı ve kendi fiyat riskini gerektirir.
-3. **Kapsam A ile daraltıldı**: BTCUSDT ve SOLUSDT, yalnızca 15m ve 1h.
-   1m ve 5m kapsam dışı; sessizce geri getirme, gerekirse Berk'e sor.
-4. **Yeni tarama turu istenirse bu bir çoklu test sorunudur.** Her yeni
-   parametre denemesi kabul eşiğini sertleştirir; motor tam olarak bunu
-   engellemek için var. İstenirse yapılır ama bedeli söylenir.
-5. **OTOCO kısmi dolumda koruma sağlamıyor** (FAZ0 Risk #1). "Korumasız süre
+   (indirimsiz).
+3. **Kâğıt işlem modu Faz 4'ün işi.** Sinyal günlüğü (`strategy/journal.py`)
+   altyapısı hazır: kart yazılıyor, pencere dolunca sonuç aynı mum
+   verisinden hesaplanıyor, "önerilen vs gerçekleşen" sapması çıkıyor.
+   Performans ölçümü **oransal** yapılacak (Berk'in kararı).
+4. **Telegram Faz 4'te.** İzleme paneli şu an okunur; alarm göndermiyor ve
+   ekranda "bildirim yok" yazıyor. Olmayan bir şey vaat edilmedi.
+5. **Risk motoru Faz 4'ün işi**, ama çekirdeği `risk/sizing.py` içinde hazır:
+   bütçe mi risk kuralı mı bağlayıcı, stepSize yuvarlama kaybı, komisyon
+   dahil stop zararı, NOTIONAL kontrolü. Faz 4 bunun üstüne günlük kayıp
+   sınırı ve arka arkaya zarar freni koyacak.
+6. **100 USDT bütçe kararı** yürürlükte.
+7. **Testnet yerine Binance Demo Mode** kullanılacak (Berk'in kararı).
+8. **OTOCO kısmi dolumda koruma sağlamıyor** (FAZ0 Risk #1). "Korumasız süre
    nöbetçisi" (`config/default.yaml` → `emir.korumasiz_azami_saniye`, 20 sn)
-   onaylandı ama henüz yazılmadı; Faz 5'in işi.
-6. **Faz 5 bağımlılığı** `binance-sdk-spot` `pyproject.toml` içinde yorum
+   onaylandı ama yazılmadı; Faz 5'in işi.
+9. **Faz 5 bağımlılığı** `binance-sdk-spot` `pyproject.toml` içinde yorum
    satırında bekliyor. `binance-connector` PyPI'da "deprecated"; internetteki
    örneklerin çoğu hâlâ onu kullanıyor, kullanma.
-7. **100 USDT bütçe kararı.** Risk motoru her öneride bütçenin mi risk
-   kuralının mı bağlayıcı olduğunu gösterecek ve stepSize yuvarlamasından
-   doğan hatayı hesaba katacak (Faz 4, ama B ekindeki maliyet/risk paneli
-   aynı hesabı kullanacak).
-8. **Piyasa verisi Berk'in Mac'inde hazır** (`~/Desktop/alsat/veri`).
-   Yeniden indirtme.
+10. **Piyasa verisi Berk'in Mac'inde hazır** (`~/Desktop/alsat/veri`).
+    Yeniden indirtme. Ama **borsa filtreleri önbelleği
+    (`veri/exchangeinfo.json`) onda henüz yok**: o dosya veri tazeleme
+    adımında yazılıyor ve bu özellik Faz 3'te eklendi. Bir kez
+    `bash kurulum.sh` (seçeneksiz) çalıştırması gerekir; o zamana kadar
+    arayüz "borsa filtreleri indirilmemiş" diyecek ve fiyatları
+    yuvarlamayacak. Bu beklenen durum.
+11. **Yeni tarama turu istenirse bu bir çoklu test sorunudur.** Her yeni
+    parametre denemesi kabul eşiğini sertleştirir. İstenirse yapılır ama
+    bedeli söylenir.
 
-## Bu notu sonraki faza devrederken
+## 12. Güvenlik (bunlar hiçbir fazda düşmez)
+
+* **TLS sertifika doğrulaması hiçbir koşulda, geçici olarak bile
+  kapatılmayacak.** Berk'in ağında HTTPS trafiğini yeniden imzalayan bir
+  katman var; uygulama bu yüzden `truststore` ile macOS güven deposunu
+  kullanıyor. Teşhis aracı: `albsat-tls-teshis`.
+* Sırlar Berk'in bilgisayarından çıkmıyor: anahtar macOS Keychain'de, `.env`
+  yalnızca anahtarın yerini söylüyor, ortam değişkenine sır konmuyor.
+* Berk 21 Eylül 2026'da sohbete bir Binance API anahtarı yapıştırdı. İptal
+  etmesi söylendi; anahtar kullanılmadı, hiçbir dosyaya, commit'e veya
+  hafızaya yazılmadı. Anahtar isteme, yazdırma, dosyaya koyma.
+* Gerçek para ile emir gönderecek ve API anahtarı gerektirecek her adım
+  öncesinde Berk'e sorulacak. Uygulama her zaman "Sadece Öneri" modunda
+  açılıyor.
+* Binance'e giden istek hacmi sınırlanmalı. Beklenmedik büyüklükte bir iş
+  çıkarsa program istek göndermeden durmalı.
+* Komisyon oranı, sembol filtresi veya limit **koda sabit yazılmaz**;
+  borsadan çekilir (SPEC §11).
+* Arayüz yalnızca `127.0.0.1` dinler; bütün uçlar `GET`.
+
+## 13. Bu notu sonraki faza devrederken
 
 Berk'in kuralı: her faz yeni bir oturumda yürür ve devralan oturum **eksik
-bilgi olmadan** devam edebilmelidir. Faz 3 bitince bu not baştan yazılır ve
+bilgi olmadan** devam edebilmelidir. Faz 4 bitince bu not baştan yazılır ve
 şunları taşır:
 
 1. Berk nasıl çalışıyor (Mac, terminal tanıdık değil, ilerleme yazdır,
@@ -231,5 +288,6 @@ bilgi olmadan** devam edebilmelidir. Faz 3 bitince bu not baştan yazılır ve
 8. Güvenlik kuralları (bunlar hiçbir fazda düşmez).
 
 Belgelerin kendisi (`SPEC.md`, `FAZ0-MIMARI.md`, `FAZ1-FIZIBILITE.md`,
-`FAZ2-SONUC.md`, `FAZ2-ORUNTU-MOTORU.md`) yerinde duruyor; bu not onların
-yerine geçmez, hangisinin ne zaman okunacağını söyler.
+`FAZ2-SONUC.md`, `FAZ2-ORUNTU-MOTORU.md`, `FAZ3-ONERI-MOTORU.md`) yerinde
+duruyor; bu not onların yerine geçmez, hangisinin ne zaman okunacağını
+söyler.
