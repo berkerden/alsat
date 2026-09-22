@@ -21,6 +21,29 @@
 * Kod GitHub'da `berkerden/alsat`, `main` dalında duruyor; Berk'in
   bilgisayarında da yedeği var.
 
+## Berk şu ana kadar neyi çalıştırdı
+
+* Faz 1 fizibilite taraması: bir kez, gerçek veriyle. Veri
+  `~/Desktop/alsat/veri` altında indirilmiş ve doğrulanmış durumda
+  (1 Mart – 21 Eylül 2026, sekiz seri, %100 eksiksiz).
+* Faz 2 örüntü taraması: üç kez (motor iki kez düzeltildi arada).
+  Sonuncusu kesin kayıt.
+* Maliyetsiz teşhis turu: bir kez.
+
+Yeniden indirtme, yeniden çalıştırtma gerekmiyor; sonuçlar belgelerde.
+
+## Eldeki komut satırı araçları
+
+| Araç | Ne yapar | Ağa çıkar mı |
+|---|---|---|
+| `albsat-fizibilite` | Veri indirir, kalite raporu ve fizibilite taraması | Evet |
+| `albsat-oruntu` | Örüntü keşfi, istatistik, backtest, rapor | **Hayır** |
+| `albsat-oruntu --maliyetsiz` | Aynısı, maliyet sıfır sayılarak (teşhis) | **Hayır** |
+| `albsat-tls-teshis` | Sertifika zinciri teşhisi | Evet |
+
+`bash kurulum.sh` hepsini sırayla sarmalıyor; `tarama` ve `teshis`
+seçenekleri yukarıda.
+
 ## Bu çalışma ortamının kısıtları
 
 * Ağ politikası **api.binance.com ve data.binance.vision adreslerini
@@ -106,6 +129,17 @@ paneli ve disiplinli alım**. Ana akış değil, ek yetenek.
 
 Bunun dışına çıkma. Kapsamı genişleten her fikir önce Berk'e sorulur.
 
+### Kabul kriteriyle ilgili bir gerilim, baştan bil
+
+SPEC §10 Faz 3'ün kabul kriteri: *"Öneri kartları eksiksiz; marjlar komisyon
+sonrası doğru."* Kabul edilmiş kural olmadığı için ortada gösterilecek öneri
+kartı yok. Bu kriteri "kart uydur" diye okuma. Doğru okuma: **kart şablonu
+eksiksiz ve marj hesabı doğru olmalı**, yani bir kural çıktığında kart
+eksiksiz doldurulabilmeli ve komisyon sonrası marj doğru çıkmalı. Kartın
+doğruluğu sentetik/örnek bir kuralla gösterilebilir; kullanıcıya sunulan
+ekranda ise dürüst "önerilecek kural yok" durumu görünür. Bunu Berk'e Faz 3
+sonunda açıkça anlat.
+
 ### Faz 3 için seçilmiş varsayılan (Berk'e danışmadan değiştirme)
 
 Öneri motoru **"düzeltme öncesi dikkat çekenler" listesini öneri kartı
@@ -114,6 +148,24 @@ arayüzde kart haline getirmek, Faz 2'nin engellemek için var olduğu hatayı
 kullanıcı arayüzünden geri sokmak olur. Gösterilecekse ayrı bir "incelenen
 adaylar" bölümünde, kabul edilmediği açıkça yazılarak gösterilir. Berk
 aksini isterse o zaman konuşulur.
+
+## Tarama motorunun güvencesi — bozmadan önce oku
+
+Motorun doğruluğunun tek dayanağı üç testtir (`tests/test_scan.py`):
+
+1. Rastgele yürüyüş verisinde, maliyet varken, düzeltmeden geçen örüntü
+   **çıkmamalı**.
+2. İçine bilerek kenar konmuş veride o kural **bulunabilmeli**.
+3. Eğitim dilimi bittikten sonraki her şey bozulduğunda aday kümesi
+   **harfi harfine aynı** kalmalı (keşif geleceğe bakmıyor).
+
+Buna `tests/test_lookahead.py` içindeki 17 test ekleniyor: geleceği bozma,
+kesip yeniden hesaplama, girişin bir sonraki mumun açılışı olması, kapanmamış
+mumun tabloya hiç girmemesi.
+
+Bu testlerden biri kırmızıya dönerse rapor güvenilirliğini kaybeder. Motora
+dokunan her değişiklikte hepsi yeşil kalmalı; testi değiştirerek geçirmek
+çözüm değil.
 
 ## Faz 2'den öğrenilen, koda bakarak görülmeyecek tuzaklar
 
@@ -161,3 +213,23 @@ aksini isterse o zaman konuşulur.
    aynı hesabı kullanacak).
 8. **Piyasa verisi Berk'in Mac'inde hazır** (`~/Desktop/alsat/veri`).
    Yeniden indirtme.
+
+## Bu notu sonraki faza devrederken
+
+Berk'in kuralı: her faz yeni bir oturumda yürür ve devralan oturum **eksik
+bilgi olmadan** devam edebilmelidir. Faz 3 bitince bu not baştan yazılır ve
+şunları taşır:
+
+1. Berk nasıl çalışıyor (Mac, terminal tanıdık değil, ilerleme yazdır,
+   uzun çıktıyı dosya olarak yollar).
+2. Çalışma ortamının kısıtları ve temiz-klon doğrulama kuralı.
+3. Berk'in o fazda verdiği kararlar, **kendi cümleleriyle**.
+4. O fazın sonucu bir paragrafta, ayrıntı için belge adresiyle.
+5. O fazda öğrenilen, koda bakarak görülmeyecek tuzaklar.
+6. Danışılmadan değiştirilmemesi gereken seçilmiş varsayılanlar.
+7. Yarım kalanlar ve sonraki faza taşınan uyarılar.
+8. Güvenlik kuralları (bunlar hiçbir fazda düşmez).
+
+Belgelerin kendisi (`SPEC.md`, `FAZ0-MIMARI.md`, `FAZ1-FIZIBILITE.md`,
+`FAZ2-SONUC.md`, `FAZ2-ORUNTU-MOTORU.md`) yerinde duruyor; bu not onların
+yerine geçmez, hangisinin ne zaman okunacağını söyler.

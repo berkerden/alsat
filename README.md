@@ -12,6 +12,8 @@ Kapsam ve gereksinimler: [`docs/SPEC.md`](docs/SPEC.md)
 Mimari, API bulguları ve risk listesi: [`docs/FAZ0-MIMARI.md`](docs/FAZ0-MIMARI.md)
 Fizibilite sonucu: [`docs/FAZ1-FIZIBILITE.md`](docs/FAZ1-FIZIBILITE.md)
 Örüntü motorunun yöntemi: [`docs/FAZ2-ORUNTU-MOTORU.md`](docs/FAZ2-ORUNTU-MOTORU.md)
+Örüntü aramasının sonucu: [`docs/FAZ2-SONUC.md`](docs/FAZ2-SONUC.md)
+Fazlar arası devir notu: [`docs/DEVIR-NOTU.md`](docs/DEVIR-NOTU.md)
 
 ---
 
@@ -21,8 +23,8 @@ Fizibilite sonucu: [`docs/FAZ1-FIZIBILITE.md`](docs/FAZ1-FIZIBILITE.md)
 |---|---|---|
 | 0 | Doküman incelemesi, mimari, kütüphane seçimi | ✅ Onaylandı |
 | 1 | Veri katmanı + **fizibilite taraması** | ✅ Onaylandı |
-| 2 | Örüntü keşif + backtest motoru | 🔨 Devam ediyor |
-| 3 | Periyot sihirbazı + öneri motoru + arayüz | ⏳ |
+| 2 | Örüntü keşif + backtest motoru | ✅ Onaylandı |
+| 3 | Periyot sihirbazı + öneri motoru + arayüz | 🔨 Devam ediyor |
 | 4 | Risk motoru + kâğıt işlem + Telegram | ⏳ |
 | 5 | Emir yürütme (**Demo Mode**) | ⏳ |
 | 6 | Canlı yarı otomatik → tam otomatik | ⏳ |
@@ -45,6 +47,14 @@ Her fazın sonunda çalışma durur ve onay beklenir (SPEC.md §10).
   deflated Sharpe, walk-forward, çeyreklik kararlılık
 - **Backtest motoru** ve kıyas ölçütleri (rastgele giriş, al-ve-tut)
 - **Look-ahead ve repaint testleri** (`tests/test_lookahead.py`)
+- **Örüntü tarama aracı** (`albsat-oruntu`): keşif eğitim döneminde, kabul kararı
+  yalnızca ayrılmış dönemden, çoklu test düzeltmesi koşunun tamamı üzerinden
+- **Maliyetsiz teşhis turu** (`albsat-oruntu --maliyetsiz`): maliyet sıfır
+  sayılarak "ortada yön bilgisi var mı" sorusunu ölçer
+
+Faz 2'nin ölçüm sonucu: bu kapsamda (BTCUSDT + SOLUSDT, 15m + 1h, 2-4 mumluk
+pencereler) çoklu test düzeltmesinden geçen örüntü yok; maliyet tamamen
+kaldırıldığında da yok. Ayrıntı [`docs/FAZ2-SONUC.md`](docs/FAZ2-SONUC.md).
 
 ---
 
