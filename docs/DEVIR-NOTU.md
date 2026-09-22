@@ -1,8 +1,9 @@
-# Devir notu — Faz 1'den Faz 2'ye
+# Devir notu — Faz 2'den Faz 3'e
 
-21 Eylül 2026. Bu not, koda ve diğer belgelere bakarak öğrenilemeyecek
+22 Eylül 2026. Bu not, koda ve diğer belgelere bakarak öğrenilemeyecek
 şeyleri yeni oturuma aktarmak içindir. Şartname `SPEC.md`, mimari kararlar
-`docs/FAZ0-MIMARI.md`, fizibilite sonucu `docs/FAZ1-FIZIBILITE.md`.
+`docs/FAZ0-MIMARI.md`, fizibilite sonucu `docs/FAZ1-FIZIBILITE.md`,
+**Faz 2 sonucu `docs/FAZ2-SONUC.md`**, yöntem `docs/FAZ2-ORUNTU-MOTORU.md`.
 
 ## Berk nasıl çalışıyor
 
@@ -12,6 +13,11 @@
   tutarak anlatılmalı. Çıplak komut listesi verme.
 * Güncelleme komutu tek satıra indirgendi:
   `cd ~/Desktop/alsat && git pull && bash kurulum.sh`
+  Sonuna `tarama` eklenirse internete çıkan adım atlanır, `teshis` eklenirse
+  ayrıca maliyetsiz teşhis turu da çalışır.
+* Uzun süren her adım ekrana ilerleme yazmalı. Sessiz ekrana bakınca
+  takıldığını sanıyor.
+* Uzun çıktıları sohbete yapıştıramıyor; dosya olarak yolluyor.
 * Kod GitHub'da `berkerden/alsat`, `main` dalında duruyor; Berk'in
   bilgisayarında da yedeği var.
 
@@ -65,25 +71,93 @@ Berk'in bilgisayarında `ModuleNotFoundError` ile patladı.
 * Gerçek para ile emir gönderecek her adım öncesinde Berk'e sorulacak.
   Uygulama her zaman "Sadece Öneri" modunda açılıyor.
 
-## Yarım kalanlar ve Faz 2'ye taşınan uyarılar
+## Faz 2 ne buldu (tek paragraf)
+
+Hiçbir şey, ve bu ölçülmüş bir sonuç. BTCUSDT + SOLUSDT, 15m + 1h, 2/3/4
+mumluk pencerelerde 6.372 aday denendi; çoklu test düzeltmesinden geçen
+örüntü çıkmadı. Ardından maliyet tamamen sıfır sayılıp arama tekrarlandı
+(9.215 aday) — yine sıfır. Maliyet kaldırıldığında rastgele işlem yapmak
+yazı turaya dönüşüyor (denemelerin %39,5–%52'si artıda, ortalama sıfır),
+yani maliyetli koşudaki %-0,22'nin tamamı maliyetti ve altında kenar yok.
+İstatistiksel disiplin tamamen bırakılıp 9.215 aday içinden en iyi görünen
+seçilse bile en yüksek değer işlem başına %+0,2304; maliyet %0,28, BNB
+indirimiyle %0,23. **Maliyeti düşürmek bir yol açmıyor.** Ayrıntı ve
+sayılar `docs/FAZ2-SONUC.md`.
+
+Ölçülen her bölümde en iyi sonucu al-ve-tut verdi (BTCUSDT %+28,8,
+SOLUSDT %+41,1, komisyon sonrası). Bu bir yatırım tavsiyesi değil, bu veri
+kümesindeki bir ölçüm sonucudur; ama Faz 3 kapsamını Berk bu bulguyu
+bilerek seçti.
+
+## Faz 3 kapsamı — Berk'in kararı (22 Eylül 2026)
+
+Berk'in kendi cümlesi: *"a ile devam edip b fonksiyonunu da ekleyerek öneri
+veya lazım olduğunda kullanılabilecek gibi ek şekilde yapabilir miyiz"*.
+
+**A — şartnamedeki Faz 3.** Periyot sihirbazı, öneri motoru, Sadece Öneri
+arayüzü (SPEC §10). Öneri motoru Faz 2'nin **kabul ettiği** kuralları okur.
+Şu an kabul edilmiş kural yok, bu yüzden dürüst çıktısı "önerilecek kural
+yok" olacak ve nedenini gösterecek: taban çizgisi, maliyet eşiği, en iyi
+adayın eşikten uzaklığı.
+
+**B eki — aynı uygulamanın içinde, lazım olunca açılan ek bölüm.** Berk'e
+sunulan B seçeneğinin tanımı şuydu: sık al-sat yerine **izleme, maliyet/risk
+paneli ve disiplinli alım**. Ana akış değil, ek yetenek.
+
+Bunun dışına çıkma. Kapsamı genişleten her fikir önce Berk'e sorulur.
+
+### Faz 3 için seçilmiş varsayılan (Berk'e danışmadan değiştirme)
+
+Öneri motoru **"düzeltme öncesi dikkat çekenler" listesini öneri kartı
+olarak göstermez.** Onlar rapora bilerek "kanıt sayılmaz" notuyla konuyor;
+arayüzde kart haline getirmek, Faz 2'nin engellemek için var olduğu hatayı
+kullanıcı arayüzünden geri sokmak olur. Gösterilecekse ayrı bir "incelenen
+adaylar" bölümünde, kabul edilmediği açıkça yazılarak gösterilir. Berk
+aksini isterse o zaman konuşulur.
+
+## Faz 2'den öğrenilen, koda bakarak görülmeyecek tuzaklar
+
+1. **Çoklu test düzeltmesi bölüm içinde kalmamalı.** Bir koşuda 12 bölüm var
+   (2 sembol × 2 periyot × 3 pencere); her biri kendi içinde %10 payla
+   düzeltilirse, ortada hiçbir şey yokken bile ortalama 1,2 "buluş" çıkar.
+   Bu teorik değil, oldu: tam olarak bir örüntü kabul edildi. Kabul kararı
+   artık `scan.apply_global_correction` ile koşunun tamamı üzerinden
+   veriliyor. Yeni bir tarama kipi eklenirse bu geçiş atlanmamalı.
+2. **Keşif ile sınama aynı veriyi paylaşmamalı.** Adaylar yalnızca eğitim
+   diliminden seçilir, kabul p-değeri yalnızca ayrılmış dönemden hesaplanır.
+   Aksi hâlde seçimin kendisi kanıt sayılır.
+3. **Bootstrap p-değerinin tabanı `1/(yineleme+1)`.** Düzeltme eşiği bunun
+   altındaysa gerçekten güçlü bir örüntü hak ettiği halde reddedilir.
+   `stats.required_iterations` bunu çözüyor.
+4. **Yön körü kontrol yazma.** Kaçınma örüntüsünde ekside olmak doğru
+   yöndür; kararlılık kontrolü bir süre bunu uyarı olarak yazdı.
+5. **Al ve kaçın testlerinin çıtası eşit değil.** "Al" örüntüsü maliyeti
+   aşmak zorunda, "kaçın" örüntüsü yalnızca sıfırın altında olmak zorunda.
+   Raporda kaçınma tarafında daha çok aday görünmesi bir piyasa bulgusu
+   değil, bu asimetridir.
+
+## Yarım kalanlar ve Faz 3'e taşınan uyarılar
 
 1. **Komisyon oranı hâlâ varsayım** (%0,1 / %0,1). Gerçek oran imzalı
-   `GET /api/v3/account/commission` ile Faz 4'te ölçülecek; fizibilite
-   tablosu o zaman yenilenmeli.
+   `GET /api/v3/account/commission` ile Faz 4'te ölçülecek; Faz 1 ve Faz 2
+   tablolarındaki her sayı o zaman yenilenmeli. Teşhis turu gösterdi ki
+   gerçek oran daha düşük olsa bile işaret değişmiyor.
 2. **BNB ile komisyon ödeme kararı verilmedi.** Varsayılan temkinli
    (indirimsiz). BNB bakiyesi tutmayı ve kendi fiyat riskini gerektirir.
-3. **ATR medyanı sakin ve hareketli dönemleri birlikte ölçüyor.** Faz 2'de
-   rejim ayrımı yapılmalı; sakin dönemlerde 15m'in eşiğin altına düşmesi
-   bekleniyor. Tek bir ortalama sayıya güvenme.
-4. **Kapsam A ile daraltıldı**: BTCUSDT ve SOLUSDT, yalnızca 15m ve 1h.
-   Hedefler tek mum değil 2–4 mumluk pencerelerde. 1m ve 5m kapsam dışı;
-   sessizce geri getirme, gerekirse Berk'e sor.
+3. **Kapsam A ile daraltıldı**: BTCUSDT ve SOLUSDT, yalnızca 15m ve 1h.
+   1m ve 5m kapsam dışı; sessizce geri getirme, gerekirse Berk'e sor.
+4. **Yeni tarama turu istenirse bu bir çoklu test sorunudur.** Her yeni
+   parametre denemesi kabul eşiğini sertleştirir; motor tam olarak bunu
+   engellemek için var. İstenirse yapılır ama bedeli söylenir.
 5. **OTOCO kısmi dolumda koruma sağlamıyor** (FAZ0 Risk #1). "Korumasız süre
    nöbetçisi" (`config/default.yaml` → `emir.korumasiz_azami_saniye`, 20 sn)
    onaylandı ama henüz yazılmadı; Faz 5'in işi.
 6. **Faz 5 bağımlılığı** `binance-sdk-spot` `pyproject.toml` içinde yorum
    satırında bekliyor. `binance-connector` PyPI'da "deprecated"; internetteki
    örneklerin çoğu hâlâ onu kullanıyor, kullanma.
-7. **Örüntü aramasında ileri bakış (look-ahead) tuzağına dikkat.** Veri
-   Berk'in Mac'inde `~/Desktop/alsat/veri` altında indirilmiş ve doğrulanmış
-   durumda; yeniden indirmeye gerek yok.
+7. **100 USDT bütçe kararı.** Risk motoru her öneride bütçenin mi risk
+   kuralının mı bağlayıcı olduğunu gösterecek ve stepSize yuvarlamasından
+   doğan hatayı hesaba katacak (Faz 4, ama B ekindeki maliyet/risk paneli
+   aynı hesabı kullanacak).
+8. **Piyasa verisi Berk'in Mac'inde hazır** (`~/Desktop/alsat/veri`).
+   Yeniden indirtme.
