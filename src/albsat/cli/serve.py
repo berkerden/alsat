@@ -108,9 +108,16 @@ def main(argv: list[str] | None = None) -> int:
                     flush=True,
                 )
     else:
+        # Kural deposu Faz 3'te eklendi; Faz 2'yi daha önce çalıştırmış
+        # kullanıcıda bu dosya yok. İki seçenek de yazılıyor: "tarama"
+        # yalnızca depoyu üretir, seçeneksiz çalıştırma borsa filtrelerini
+        # de indirir. Yalnızca birini yazmak, eksik kalan öbürünü
+        # kullanıcının kendi başına bulmasını gerektiriyordu.
         print(
             f"  ! Kural deposu bulunamadı: {rule_path}\n"
-            "    Önce örüntü taramasını çalıştırın (bash kurulum.sh tarama).",
+            "    Örüntü taramasını çalıştırın:\n"
+            "      bash kurulum.sh tarama   (internete çıkmaz, yalnızca tarama)\n"
+            "      bash kurulum.sh          (veriyi ve borsa filtrelerini de tazeler)",
             flush=True,
         )
 
