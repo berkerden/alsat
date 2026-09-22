@@ -285,7 +285,7 @@ servis edilen düz HTML/CSS/JS. Gerekçe:
    çizimi. Hazır kütüphane ya npm ya da CDN demekti; CDN internetsiz
    çalışmaz ve sayfayı dışarıya bağlar.
 
-**Bu sapma Berk'in onayına sunulmalı.**
+**Berk bu sapmayı 22 Eylül 2026'da Faz 3 onayıyla birlikte kabul etti.**
 
 ### 10.2 Güvenlik sınırları
 

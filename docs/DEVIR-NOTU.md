@@ -48,7 +48,7 @@ kaynak paketini yuttu, burada testler geçti, Berk'in bilgisayarında
 `ModuleNotFoundError` ile patladı.
 
 Faz 3 böyle doğrulandı: temiz klon → `bash kurulum.sh arayuz` → Python
-bulundu, sanal ortam kuruldu, bağımlılıklar indi, 335 test geçti, arayüz
+bulundu, sanal ortam kuruldu, bağımlılıklar indi, 340 test geçti, arayüz
 açıldı; sonra sentetik veriyle tarama çalıştırılıp arayüzün beş sekmesi de
 tarayıcıda hatasız gezildi.
 
@@ -56,7 +56,9 @@ tarayıcıda hatasız gezildi.
 onu buluyor (`executable_path="/opt/pw-browsers/chromium"`). Sayfayı gerçek
 tarayıcıda açıp konsol hatalarını, sekmeleri ve mobil genişlikte yatay
 taşmayı ölçmek mümkün; "endpoint 200 döndü" tek başına sayfanın çalıştığını
-göstermiyor (bir JavaScript hatası bunu geçer).
+göstermiyor (bir JavaScript hatası bunu geçer). **Berk'in Mac'i Retina**:
+sayfayı `device_scale_factor=2` ile de aç ve aynı etkileşimi birkaç kez
+tekrarlayıp boyutları her seferinde ölç (§6, madde 10).
 
 ## 3. Berk'in Faz 3'te verdiği karar — kendi cümlesiyle
 
@@ -73,7 +75,10 @@ yeni fazlara geçiş yap. Bağlam şişip kalite düşmesin bu sayede. Her oturu
 toparla ve sonraki faz için sonraki oturuma taşı, eksik bilgi olmadan devam
 etmiş olsun."*
 
-**Faz 3 onayı Berk'te.** Onaylanmadan Faz 4'e geçilmez (SPEC §10).
+**Faz 3, 22 Eylül 2026'da onaylandı.** Berk'in cümlesi: *"onaylıyorum"*.
+Onaydan hemen önce Berk'in Mac'inde bir grafik hatası çıktı; iki düzeltmeyle
+kapandı ve Berk kendi ekranında doğruladı (*"tamam oldu"*). Ayrıntısı §6,
+madde 10 ve 11.
 
 ## 4. Faz 3 ne yaptı (tek paragraf)
 
@@ -136,6 +141,28 @@ yerel bir arayüzden sunuluyor; emir gönderen kod yok. Ayrıntı ve gerekçeler
    ikisi ayrışırsa kart kendi kanıtıyla çelişir.
 9. **Örnek kart kendi durum koduyla gelir** (`ornek`). Gerçek durumlardan
    ayrı bir değer taşıyor ki arayüz onu yanlışlıkla öneri diye çizmesin.
+10. **Retina ekranda canvas boyutu geri okunmaz.** Grafik, Berk'in Mac'inde
+    her Yenile'de ikiye katlanıyordu (260 → 520 → 1040 px). Sebep:
+    yükseklik canvas'ın `height` özniteliğinden okunuyor, sonra piksel
+    oranıyla (2) çarpılıp geri yazılıyordu. Piksel oranı 1 olan ekranda hiç
+    görünmediği için ilk tarayıcı doğrulamasından kaçtı; Berk buldu.
+    Düzeltme `bb6c581`: CSS yüksekliği `data-yukseklik` özniteliğinden
+    okunuyor, arka tampon her çizimde `CSS boyutu × devicePixelRatio`
+    olarak yeniden kuruluyor. `test_arayuz.py` içinde testi var. Canvas'a
+    dokunan her değişiklik `device_scale_factor=2` ile, tekrarlı
+    etkileşimle doğrulanmalı.
+11. **Güncellemeden sonra "hâlâ bozuk" derse önce eski sekmeyi düşün.**
+    İlk düzeltmeden sonra Berk aynı hatayı yine gördü: güncellemeden önce
+    açılmış sekme eski JS'i çalıştırıyordu. Uygulamadaki Yenile düğmesi
+    kodu değil yalnızca veriyi yeniler; önbellek başlığı da yoktu.
+    Düzeltme `559b9eb`: bütün yanıtlar `Cache-Control: no-store`, statik
+    dosya adresleri içerik özetiyle sürümlü (`?v=`), her `/api/` yanıtı
+    `X-Arayuz-Surumu` başlığını taşıyor ve açık sekme sürüm değişince
+    üstte sarı bir "sayfayı yenileyin" şeridi gösteriyor. Sürüm sayfanın en
+    altındaki gri satırda ve `bash kurulum.sh arayuz` çıktısında yazıyor.
+    Berk bir hatanın sürdüğünü söylerse **ilk soru**: iki yerdeki "Arayüz
+    sürümü" aynı mı? Onayda geçerli sürüm `c9c97214`; statik dosyalar
+    değişince bu değer de değişir.
 
 ## 7. Danışılmadan değiştirilmemesi gereken seçilmiş varsayılanlar
 
@@ -166,8 +193,8 @@ ikinci bir kurulum zinciri kurulumun en kırılgan yerini iki katına
 çıkarırdı. Mum grafiği de bağımlılıksız (`grafik.js`, ~120 satır canvas);
 hazır kütüphane ya npm ya CDN demekti, CDN internetsiz çalışmaz.
 
-**Berk bu sapmayı Faz 3 onayında gördü.** İtiraz ederse React'e geçmek
-mümkün; API tarafı değişmez.
+**Berk Faz 3'ü bu sapmayla birlikte onayladı**, itiraz etmedi. İleride
+isterse React'e geçmek mümkün; API tarafı değişmez.
 
 ## 9. Tarama motorunun güvencesi — bozmadan önce oku
 

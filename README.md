@@ -25,7 +25,7 @@ Fazlar arası devir notu: [`docs/DEVIR-NOTU.md`](docs/DEVIR-NOTU.md)
 | 0 | Doküman incelemesi, mimari, kütüphane seçimi | ✅ Onaylandı |
 | 1 | Veri katmanı + **fizibilite taraması** | ✅ Onaylandı |
 | 2 | Örüntü keşif + backtest motoru | ✅ Onaylandı |
-| 3 | Periyot sihirbazı + öneri motoru + arayüz | 🔍 Onay bekliyor |
+| 3 | Periyot sihirbazı + öneri motoru + arayüz | ✅ Onaylandı |
 | 4 | Risk motoru + kâğıt işlem + Telegram | ⏳ |
 | 5 | Emir yürütme (**Demo Mode**) | ⏳ |
 | 6 | Canlı yarı otomatik → tam otomatik | ⏳ |
