@@ -17,13 +17,14 @@ değiştiren tek uç ``/api/gunluk/kaydet``, o da yalnızca yerel günlüğe yaz
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from albsat.api import serialize
@@ -43,6 +44,43 @@ from albsat.strategy.rules import RuleSet, RuleStoreError
 from albsat.strategy.signals import EngineConfig, cost_threshold_text, recommend
 
 STATIC_DIR = Path(__file__).parent / "static"
+
+#: API yanıtlarında arayüz dosyalarının sürümünü taşıyan başlık. Açık bir
+#: sekme bunu kendi yüklendiği sürümle karşılaştırır.
+VERSION_HEADER = "X-Arayuz-Surumu"
+
+_version_cache: tuple[tuple[tuple[str, int, int], ...], str] | None = None
+
+
+def asset_version(directory: Path = STATIC_DIR) -> str:
+    """Arayüz dosyalarının içeriğinden türetilen kısa sürüm kimliği.
+
+    Neden var: 22 Eylül 2026'da grafik hatası düzeltilip gönderildiği halde
+    kullanıcının ekranında sürdü. Önceden açılmış sekme eski ``grafik.js``'i
+    çalıştırmaya devam ediyordu; uygulamanın "Yenile" düğmesi veriyi yeniler,
+    kodu yenilemez. Bu kimlik üç yerde kullanılır: dosya adreslerine eklenir
+    (eski kopya yeni adresle karışmaz), API yanıtlarına başlık olarak konur
+    (açık sekme sürümün değiştiğini anlar), sayfanın altında yazar (kullanıcı
+    hangi sürümü gördüğünü okuyabilir).
+
+    İçerikten türetilir, saatten değil: aynı dosyalar her makinede aynı
+    kimliği verir. Değişim zamanı ve boyut yalnızca önbellek anahtarıdır;
+    sunucu çalışırken ``git pull`` yapılırsa yeni kimlik hemen görünür.
+    """
+    global _version_cache
+    files = sorted(item for item in directory.iterdir() if item.is_file())
+    signature = tuple(
+        (item.name, item.stat().st_mtime_ns, item.stat().st_size) for item in files
+    )
+    if _version_cache is not None and _version_cache[0] == signature:
+        return _version_cache[1]
+    digest = hashlib.sha256()
+    for item in files:
+        digest.update(item.name.encode("utf-8") + b"\0")
+        digest.update(item.read_bytes())
+    version = digest.hexdigest()[:8]
+    _version_cache = (signature, version)
+    return version
 
 #: Uygulama bu fazda yalnızca bu modda çalışır.
 MODE = "sadece_oneri"
@@ -126,6 +164,17 @@ def create_app(state: AppState) -> FastAPI:
         openapi_url=None,
     )
     app.state.albsat = state
+
+    @app.middleware("http")
+    async def onbellek_ve_surum(request: Request, call_next: Any) -> Any:
+        response = await call_next(request)
+        # Tarayıcı bu uygulamanın hiçbir yanıtını saklamasın. Dosyalar
+        # yerelde ve küçük, saklamanın kazancı yok; saklanan eski bir kopya
+        # ise düzeltilmiş bir hatayı kullanıcının ekranında yaşatır.
+        response.headers["Cache-Control"] = "no-store"
+        if request.url.path.startswith("/api/") and STATIC_DIR.exists():
+            response.headers[VERSION_HEADER] = asset_version()
+        return response
 
     # --- durum ---------------------------------------------------------
 
@@ -393,9 +442,10 @@ def create_app(state: AppState) -> FastAPI:
             "/statik", StaticFiles(directory=STATIC_DIR), name="statik"
         )
 
-        @app.get("/")
-        def anasayfa() -> FileResponse:
-            return FileResponse(STATIC_DIR / "index.html")
+        @app.get("/", response_class=HTMLResponse)
+        def anasayfa() -> HTMLResponse:
+            page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+            return HTMLResponse(page.replace("{{SURUM}}", asset_version()))
     else:  # pragma: no cover - paket eksik kurulmuşsa
 
         @app.get("/")
@@ -408,4 +458,12 @@ def create_app(state: AppState) -> FastAPI:
     return app
 
 
-__all__ = ["MODE", "MODE_TR", "STATIC_DIR", "AppState", "create_app"]
+__all__ = [
+    "MODE",
+    "MODE_TR",
+    "STATIC_DIR",
+    "VERSION_HEADER",
+    "AppState",
+    "asset_version",
+    "create_app",
+]

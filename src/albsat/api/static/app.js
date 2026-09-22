@@ -14,6 +14,14 @@
   let durum = null;
   let ornekGoster = false;
 
+  // Sayfanın yüklendiği arayüz sürümü (sunucu index.html'e yazıyor).
+  const SAYFA_SURUMU = (function () {
+    const m = document.querySelector('meta[name="arayuz-surumu"]');
+    const deger = m ? m.content : "";
+    return deger.indexOf("{") === -1 ? deger : "";
+  })();
+  let guncellemeGosterildi = false;
+
   // --- yardımcılar ---------------------------------------------------
 
   function el(etiket, sinif, metin) {
@@ -98,8 +106,27 @@
     return t.toLocaleString("tr-TR", { timeZone: "Europe/Istanbul" });
   }
 
+  // Sunucudaki arayüz dosyaları bu sekme açıldıktan sonra değiştiyse
+  // (örneğin "git pull" yapıldıysa), sekme hâlâ eski kodu çalıştırıyordur.
+  // Uygulamanın "Yenile" düğmesi yalnızca veriyi yeniler, kodu yenilemez;
+  // bu yüzden kullanıcıya sayfayı yenilemesi söylenir. 22 Eylül 2026'da
+  // düzeltilmiş bir grafik hatası bu yüzden kullanıcının ekranında sürdü.
+  function surumuDenetle(sunucuSurumu) {
+    if (guncellemeGosterildi || !SAYFA_SURUMU || !sunucuSurumu) return;
+    if (sunucuSurumu === SAYFA_SURUMU) return;
+    guncellemeGosterildi = true;
+    const serit = el("div", "guncelleme");
+    serit.appendChild(el("span", null,
+      "Uygulama güncellendi. Bu sayfa eski sürümü gösteriyor; yeni sürüm için sayfayı yenileyin."));
+    const dugme = el("button", "dugme", "Sayfayı yenile");
+    dugme.addEventListener("click", function () { window.location.reload(); });
+    serit.appendChild(dugme);
+    document.body.insertBefore(serit, document.body.firstChild);
+  }
+
   async function getir(yol) {
     const yanit = await fetch(yol);
+    surumuDenetle(yanit.headers.get("X-Arayuz-Surumu"));
     let govde = null;
     try { govde = await yanit.json(); } catch (hata) { govde = null; }
     if (!yanit.ok) {
@@ -189,7 +216,8 @@
       const s = await getir("/api/saglik");
       document.getElementById("saglik-satiri").textContent =
         "Mod: " + s.mod + " · Emir yetkisi: " + s.emir_yetkisi +
-        " · API anahtarı: " + s.api_anahtari + " · Veri: " + s.veri_dizini;
+        " · API anahtarı: " + s.api_anahtari + " · Veri: " + s.veri_dizini +
+        (SAYFA_SURUMU ? " · Arayüz sürümü: " + SAYFA_SURUMU : "");
     } catch (hata) { /* sağlık satırı olmadan da çalışır */ }
   }
 

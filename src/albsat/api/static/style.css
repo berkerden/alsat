@@ -144,6 +144,14 @@ details > *:not(summary) { padding: 0 16px 14px; }
 
 .ek-giris { color: var(--yazi-2); }
 
+.guncelleme {
+  display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px; background: rgba(210,153,34,.15);
+  border-bottom: 1px solid rgba(210,153,34,.45); color: var(--uyari);
+  position: sticky; top: 0; z-index: 10;
+}
+
 @media (max-width: 620px) {
   .alanlar { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
   .secici label, .form-satir label { flex: 1 1 130px; }

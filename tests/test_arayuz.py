@@ -291,3 +291,53 @@ def test_grafik_yuksekligi_canvas_ozniteliginden_geri_okunmuyor():
     canvas = re.search(r"<canvas[^>]*id=\"grafik\"[^>]*>", sayfa).group(0)
     assert " height=" not in canvas
     assert "data-yukseklik" in canvas
+
+
+# --- eski kodun tarayıcıda kalmaması ----------------------------------------
+#
+# 22 Eylül 2026: grafik hatası düzeltilip gönderildi ama kullanıcının
+# ekranında sürdü. Önceden açılmış sekme eski grafik.js'i çalıştırıyordu ve
+# sunucu tarayıcıya hiçbir önbellek talimatı vermiyordu.
+
+def test_hicbir_yanit_tarayicida_saklanmiyor(client):
+    for yol in ("/", "/statik/grafik.js", "/statik/app.js",
+                "/statik/style.css", "/api/durum"):
+        yanit = client.get(yol)
+        assert yanit.headers.get("cache-control") == "no-store", yol
+
+
+def test_sayfa_surumlu_adreslerle_geliyor(client):
+    from albsat.api.app import asset_version
+
+    surum = asset_version()
+    sayfa = client.get("/").text
+    assert "{{SURUM}}" not in sayfa
+    assert f'<meta name="arayuz-surumu" content="{surum}">' in sayfa
+    for dosya in ("style.css", "grafik.js", "app.js"):
+        assert f"/statik/{dosya}?v={surum}" in sayfa
+
+
+def test_api_yanitlari_surumu_tasiyor(client):
+    from albsat.api.app import VERSION_HEADER, asset_version
+
+    yanit = client.get("/api/durum")
+    assert yanit.headers.get(VERSION_HEADER) == asset_version()
+
+
+def test_surum_dosya_degisince_degisir_ayni_icerikte_ayni_kalir(tmp_path):
+    """İçerikten türetilir: aynı dosyalar her makinede aynı kimliği verir."""
+    import shutil
+
+    from albsat.api.app import STATIC_DIR, asset_version
+
+    bir = tmp_path / "bir"
+    iki = tmp_path / "iki"
+    shutil.copytree(STATIC_DIR, bir)
+    shutil.copytree(STATIC_DIR, iki)
+    assert asset_version(bir) == asset_version(iki)
+
+    once = asset_version(bir)
+    grafik = bir / "grafik.js"
+    grafik.write_text(grafik.read_text(encoding="utf-8") + "\n// değişti\n",
+                      encoding="utf-8")
+    assert asset_version(bir) != once

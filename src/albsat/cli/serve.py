@@ -21,7 +21,7 @@ import threading
 import webbrowser
 from pathlib import Path
 
-from albsat.api.app import MODE_TR, AppState, create_app
+from albsat.api.app import MODE_TR, AppState, asset_version, create_app
 from albsat.strategy import rules as rulestore
 
 #: Yalnızca yerel arayüz. Değiştirilebilir bir seçenek değildir.
@@ -124,6 +124,9 @@ def main(argv: list[str] | None = None) -> int:
     port = _free_port(int(args.port))
     address = f"http://{HOST}:{port}/"
     print(f"  Mod            : {MODE_TR} (emir gönderilmez)", flush=True)
+    # Aynı kimlik sayfanın en altında da yazar; ikisi farklıysa tarayıcı
+    # eski bir sekmeyi gösteriyordur.
+    print(f"  Arayüz sürümü  : {asset_version()}", flush=True)
     print(f"  Adres          : {address}", flush=True)
     print("\nDurdurmak için bu pencerede Control-C tuşlayın.\n", flush=True)
 
