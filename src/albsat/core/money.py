@@ -18,6 +18,13 @@ ZERO = Decimal("0")
 ONE = Decimal("1")
 ONE_HUNDRED = Decimal("100")
 
+#: Binance fiyat ve miktarlarda en fazla 8 ondalık basamak kabul eder
+#: (``filters.md``). Sembolün gerçek adımı ``exchangeInfo``'dan gelir; bu
+#: sabit yalnızca filtreler **elde yokken** ekrana 20 basamaklı bir
+#: ``Decimal`` bölme artığı yazmamak içindir. Bir tickSize varsayımı
+#: değildir ve emir göndermek için yeterli sayılmaz.
+MAX_DECIMALS = 8
+
 
 class Rounding(str, Enum):
     """Yuvarlama yönü."""
@@ -102,6 +109,30 @@ def _exponent(value: Decimal) -> int:
     if not isinstance(exponent, int):  # NaN / Infinity
         raise ValueError(f"Geçersiz değer: {value}")
     return exponent
+
+
+def clamp_decimals(
+    value: Number, places: int = MAX_DECIMALS, mode: Rounding = Rounding.NEAREST
+) -> Decimal:
+    """Değeri en fazla ``places`` ondalık basamağa indirir.
+
+    ``Decimal`` bölmesi 28 anlamlı basamak üretir; ekranda ve JSON'da bu
+    sayıyı olduğu gibi göstermek okunmaz bir fiyat verir. Yuvarlama yönü
+    çağırana bırakılır: alış ve stop aşağı, satış ve başa-baş yukarı
+    yuvarlanır ki sonuç asla lehimize kaydırılmış görünmesin.
+    """
+    value = to_decimal(value)
+    exponent = Decimal(1).scaleb(-int(places))
+    if mode is Rounding.FLOOR:
+        rounding = ROUND_FLOOR
+    elif mode is Rounding.CEILING:
+        rounding = ROUND_CEILING
+    else:
+        rounding = ROUND_HALF_UP
+    # Yalnızca basamak sayısı kısıtlanır. ``normalize()`` çağrılmaz: 100'ü
+    # ``1E+2`` yapar. Ekrana ve JSON'a yazarken bilimsel gösterimi önlemek
+    # ayrı bir iştir ve ``format_for_api`` ile yapılır.
+    return value.quantize(exponent, rounding=rounding)
 
 
 def quantize_to_increment(value: Number, increment: Number) -> Decimal:

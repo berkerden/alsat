@@ -29,7 +29,7 @@ from albsat.backtest import run as run_backtest
 from albsat.backtest.benchmarks import buy_and_hold, random_entry_backtest
 from albsat.core.costs import minimum_meaningful_target, round_trip_for
 from albsat.core.fees import Liquidity, flat_table
-from albsat.data.klines import closed_only
+from albsat.data.klines import closed_only, to_utc
 from albsat.data.store import KlineStore
 from albsat.features import FeatureSet, build_features
 from albsat.research import report
@@ -41,6 +41,7 @@ from albsat.research.scan import (
     apply_global_correction,
     scan,
 )
+from albsat.strategy import rules as rulestore
 
 #: Faz 1 kapsam kararı (A seçeneği).
 DEFAULT_SYMBOLS = ["BTCUSDT", "SOLUSDT"]
@@ -67,6 +68,14 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Stop = bu katsayı × ATR (varsayılan 1.0)")
     parser.add_argument("--veri-dizini", default="./veri", type=Path)
     parser.add_argument("--rapor", default="faz2-oruntu-sonuc.txt", type=Path)
+    parser.add_argument(
+        "--kural-dosyasi",
+        type=Path,
+        default=None,
+        help="Kabul edilen kuralların yazılacağı JSON dosyası "
+        "(varsayılan: <veri-dizini>/kurallar.json). Faz 3 öneri motoru "
+        "bu dosyayı okur.",
+    )
     parser.add_argument("--maker", default=DEFAULT_MAKER)
     parser.add_argument("--taker", default=DEFAULT_TAKER)
     parser.add_argument("--spread", default="0.01", help="Beklenen spread %%")
@@ -125,6 +134,15 @@ def _best_pattern(result: ScanResult) -> PatternResult | None:
         return trustworthy[0]
     accepted = [p for p in result.buy_patterns if p.accepted]
     return accepted[0] if accepted else None
+
+
+def _data_span(sections: list[_Section]) -> tuple[str, str]:
+    """Taranan verinin ilk ve son mumunun UTC zamanı."""
+    starts = [int(item.frame["open_time"].iloc[0]) for item in sections]
+    ends = [int(item.frame["open_time"].iloc[-1]) for item in sections]
+    if not starts:
+        return "", ""
+    return to_utc(min(starts)).isoformat(), to_utc(max(ends)).isoformat()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -323,6 +341,36 @@ def main(argv: list[str] | None = None) -> int:
 
     chunks.append(report.closing_note())
     print("\n" + chunks[-1], flush=True)
+
+    # Faz 3 köprüsü: kabul kararı kesinleştikten sonra makine okunur kural
+    # deposu yazılır. Rapor insan içindir; öneri motoru bu dosyayı okur.
+    rule_path = args.kural_dosyasi or rulestore.path_for(args.veri_dizini)
+    if sections:
+        first, last = _data_span(sections)
+        ruleset = rulestore.build_ruleset(
+            sections,
+            cost=rulestore.CostAssumptions(
+                maker_orani=str(maker),
+                taker_orani=str(taker),
+                spread_yuzde=str(spread),
+                kayma_yuzde=str(slippage),
+                guvenlik_payi_yuzde=str(safety),
+                bnb_indirimi=bool(args.bnb_indirimi),
+                minimum_hedef_yuzde=str(threshold.minimum_target_pct),
+                aciklama=threshold.explain(),
+            ),
+            teshis_turu=bool(args.maliyetsiz),
+            pencereler=args.pencereler,
+            veri_baslangic_utc=first,
+            veri_bitis_utc=last,
+        )
+        rulestore.save(ruleset, rule_path)
+        print(
+            f"\nKural deposu yazıldı: {rule_path.resolve()} "
+            f"({ruleset.kabul_edilen_sayisi} kabul edilen kural, "
+            f"{len(ruleset.incelenen_adaylar)} incelenen aday).",
+            flush=True,
+        )
 
     elapsed = time.monotonic() - started
     args.rapor.parent.mkdir(parents=True, exist_ok=True)

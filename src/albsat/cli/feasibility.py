@@ -7,7 +7,8 @@ Kullanım (Mac'te, sanal ortam etkinken)::
 
 Ne yapar:
 
-1. ``exchangeInfo``'dan sembol filtrelerini çeker.
+1. ``exchangeInfo``'dan sembol filtrelerini çeker ve veri dizinine yazar
+   (arayüz onları internete çıkmadan okur).
 2. ``data.binance.vision`` arşivlerinden geçmiş mumları indirir, sağlamasını
    doğrular, REST ile boşlukları kapatır.
 3. Veri kalite raporunu basar.
@@ -23,8 +24,8 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
-import sys
 import ssl
+import sys
 import urllib.error
 from pathlib import Path
 
@@ -34,6 +35,7 @@ from albsat.core.filters import parse_exchange_info
 from albsat.core.tls import CERTIFICATE_HELP, enable_system_trust
 from albsat.data import vision
 from albsat.data.backfill import TooManyGaps, extend_to_now, merge_frames, repair
+from albsat.data.exchangeinfo import ExchangeInfoStore
 from albsat.data.klines import check_quality
 from albsat.data.store import KlineStore
 from albsat.exchange.http import HttpError, PublicHttp
@@ -130,9 +132,27 @@ def main(argv: list[str] | None = None) -> int:
 
     print("Sembol filtreleri çekiliyor...")
     try:
-        rules = parse_exchange_info(http.exchange_info(args.semboller))
+        payload = http.exchange_info(args.semboller)
+        rules = parse_exchange_info(payload)
     except (urllib.error.URLError, HttpError, OSError) as error:
         return _network_failure(error)
+
+    # Filtreler diske de yazılır: arayüz internete çıkmadan açılır ve fiyatı
+    # tickSize'a, miktarı stepSize'a yuvarlayabilmek için bu kopyayı okur
+    # (bkz. albsat.data.exchangeinfo). Yazma başarısız olursa veri indirme
+    # adımı iptal edilmez; kullanıcı uyarılır ve tarama sürer.
+    info_store = ExchangeInfoStore(args.veri_dizini)
+    try:
+        saved = info_store.write(payload)
+    except OSError as error:
+        print(
+            f"  ! Filtreler diske yazılamadı ({error}). Arayüz fiyatları "
+            "yuvarlayamayacak ve bunu ekranda yazacak.",
+            file=sys.stderr,
+        )
+    else:
+        print(f"  Filtreler kaydedildi: {saved}")
+
     for symbol in args.semboller:
         rule = rules.get(symbol)
         if rule is None:

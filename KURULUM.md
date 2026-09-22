@@ -105,6 +105,52 @@ cd ~/Desktop/alsat && git pull && bash kurulum.sh teshis
 İki tarama art arda çalıştığı için normalin iki katı sürer. Ekrana ilerleme
 yazar; sessiz kalmaz.
 
+## 5. Arayüzü açmak
+
+Tarama bittikten sonra sonuçları tarayıcıda görebilirsiniz. Terminal'de:
+
+```bash
+cd ~/Desktop/alsat && bash kurulum.sh arayuz
+```
+
+Betik kurulumu kontrol eder, testleri çalıştırır ve arayüzü açar. Tarayıcı
+birkaç saniye içinde kendiliğinden açılır; açılmazsa terminalde yazan adresi
+(`http://127.0.0.1:8756/`) kopyalayıp tarayıcının adres çubuğuna yapıştırın.
+
+**Arayüzü kapatmak için** o terminal penceresinde `Control` tuşuna basılı
+tutup `C` tuşuna basın. Pencereyi kapatmak da kapatır.
+
+Arayüzde beş sekme var:
+
+| Sekme | Ne gösterir |
+|---|---|
+| Öneriler | Son kapanmış mumda tetiklenen kural varsa öneri kartı; yoksa neden olmadığı |
+| Periyot sihirbazı | Hangi periyotta aramanın anlamlı olduğu, tek tabloda |
+| Örüntü kütüphanesi | Kabul edilen kurallar ve (ayrı başlıkta) kabul edilmeyen adaylar |
+| Ek araçlar | İzleme, maliyet/risk hesabı, disiplinli alım planı |
+| Sinyal günlüğü | Önerilen ile gerçekleşen arasındaki fark |
+
+### Arayüz hakkında bilmeniz gerekenler
+
+- **Yalnızca sizin bilgisayarınızdan erişilebilir.** Adres `127.0.0.1` ile
+  başlıyor; bu "bu bilgisayar" demektir. Aynı ağdaki başka bir cihaz açamaz.
+- **Emir göndermez.** Bu fazda emir gönderen kod yok. Üstteki "Sadece Öneri"
+  rozeti bunu gösteriyor.
+- **İnternete çıkmaz.** Diskteki veriyi okur. Veriyi tazelemek için
+  `bash kurulum.sh` (seçeneksiz) çalıştırmanız gerekir.
+- **API anahtarı kullanmaz.** Anahtar istemiyor, okumuyor.
+
+### "Önerilecek kural yok" yazıyorsa
+
+Bu bir arıza değil. Faz 2 taraması bu kapsamda kabul edilebilecek bir örüntü
+bulamadı; ekran bunun **nedenini** sayılarla yazıyor: kaç aday denendi, kabul
+için gereken eşik neydi, en yakın aday eşikten kaç kat uzaktaydı. Uygulama
+bulamadığı bir şeyi varmış gibi göstermiyor.
+
+Kartın nasıl göründüğünü merak ediyorsanız "Kart şablonunu örnek kuralla
+göster" düğmesine basın. O kart **uydurma bir kuralla** doldurulmuştur ve
+üstünde öyle yazar; bir öneri değildir.
+
 ## "Güvenli bağlantı kurulamadı" / sertifika hatası alırsanız
 
 Hata metninde `CERTIFICATE_VERIFY_FAILED` geçiyorsa, bilgisayarınızdaki Python

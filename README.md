@@ -13,6 +13,7 @@ Mimari, API bulguları ve risk listesi: [`docs/FAZ0-MIMARI.md`](docs/FAZ0-MIMARI
 Fizibilite sonucu: [`docs/FAZ1-FIZIBILITE.md`](docs/FAZ1-FIZIBILITE.md)
 Örüntü motorunun yöntemi: [`docs/FAZ2-ORUNTU-MOTORU.md`](docs/FAZ2-ORUNTU-MOTORU.md)
 Örüntü aramasının sonucu: [`docs/FAZ2-SONUC.md`](docs/FAZ2-SONUC.md)
+Öneri motoru ve arayüzün yöntemi: [`docs/FAZ3-ONERI-MOTORU.md`](docs/FAZ3-ONERI-MOTORU.md)
 Fazlar arası devir notu: [`docs/DEVIR-NOTU.md`](docs/DEVIR-NOTU.md)
 
 ---
@@ -24,7 +25,7 @@ Fazlar arası devir notu: [`docs/DEVIR-NOTU.md`](docs/DEVIR-NOTU.md)
 | 0 | Doküman incelemesi, mimari, kütüphane seçimi | ✅ Onaylandı |
 | 1 | Veri katmanı + **fizibilite taraması** | ✅ Onaylandı |
 | 2 | Örüntü keşif + backtest motoru | ✅ Onaylandı |
-| 3 | Periyot sihirbazı + öneri motoru + arayüz | 🔨 Devam ediyor |
+| 3 | Periyot sihirbazı + öneri motoru + arayüz | 🔍 Onay bekliyor |
 | 4 | Risk motoru + kâğıt işlem + Telegram | ⏳ |
 | 5 | Emir yürütme (**Demo Mode**) | ⏳ |
 | 6 | Canlı yarı otomatik → tam otomatik | ⏳ |
@@ -51,6 +52,17 @@ Her fazın sonunda çalışma durur ve onay beklenir (SPEC.md §10).
   yalnızca ayrılmış dönemden, çoklu test düzeltmesi koşunun tamamı üzerinden
 - **Maliyetsiz teşhis turu** (`albsat-oruntu --maliyetsiz`): maliyet sıfır
   sayılarak "ortada yön bilgisi var mı" sorusunu ölçer
+- **Kural deposu** (`veri/kurallar.json`): taramanın kabul ettiği kurallar,
+  kabul etmediği adaylar ve bölüm özetleri; Faz 2 ile Faz 3 arasındaki köprü
+- **Öneri motoru ve kartı:** giriş/hedef/stop, başa-baş, komisyon sonrası
+  marj, pozisyon büyüklüğü, güven skoru dökümü, geçerlilik süresi
+- **Pozisyon büyüklüğü:** bütçe mi risk kuralı mı bağlayıcı, stepSize
+  yuvarlamasının kaybı, komisyon dahil stop zararı
+- **Periyot sihirbazı:** ATR%/maliyet oranı, sinyal sıklığı, al-tut kıyası
+- **Sinyal günlüğü:** önerilen ile gerçekleşen arasındaki fark
+- **Ek araçlar:** izleme, maliyet/risk hesabı, disiplinli alım planı
+- **Yerel arayüz** (`albsat-arayuz`): yalnızca 127.0.0.1, Sadece Öneri modu,
+  emir göndermez, API anahtarı kullanmaz
 
 Faz 2'nin ölçüm sonucu: bu kapsamda (BTCUSDT + SOLUSDT, 15m + 1h, 2-4 mumluk
 pencereler) çoklu test düzeltmesinden geçen örüntü yok; maliyet tamamen
@@ -154,6 +166,38 @@ Yöntemin ayrıntısı ve neden böyle kurulduğu:
 
 ---
 
+## Arayüz (Faz 3)
+
+```bash
+python -m albsat.cli.serve
+```
+
+Sunucu **yalnızca 127.0.0.1**'e bağlanır (SPEC §5) ve tarayıcıyı kendiliğinden
+açar. İnternete çıkmaz, API anahtarı kullanmaz, **emir göndermez**: uygulama
+"Sadece Öneri" modundadır ve emir gönderen bir uç bulunmamaktadır.
+
+Beş sekme: Öneriler, Periyot sihirbazı, Örüntü kütüphanesi, Ek araçlar,
+Sinyal günlüğü.
+
+Kabul edilmiş kural olmadığı için Öneriler sekmesi **"önerilecek kural yok"**
+diyor ve nedenini sayılarla yazıyor: kaç aday denendi, kabul eşiği neydi, en
+yakın aday eşikten kaç kat uzaktaydı, aynı dönemde her muma girilseydi ne
+olurdu. Bu bir arıza değil, Faz 2'nin ölçtüğü sonuçtur.
+
+Kartın hangi alanları dolduracağını görmek için "Kart şablonunu örnek kuralla
+göster" düğmesi var. O kart **açıkça uydurma** bir kuralla doldurulur ve
+üstünde öyle yazar; bir öneri değildir.
+
+Terminale alışık olmayan kullanım için:
+
+```bash
+bash kurulum.sh arayuz
+```
+
+Yöntemin ayrıntısı: [`docs/FAZ3-ONERI-MOTORU.md`](docs/FAZ3-ONERI-MOTORU.md)
+
+---
+
 ## API anahtarı oluşturma
 
 Uygulama Faz 4'e kadar **hiçbir API anahtarına ihtiyaç duymaz**; şu ana kadar yalnızca
@@ -200,6 +244,10 @@ src/albsat/
   features/    mum formasyonları, indikatörler, hacim, rejim, zaman, BTC etkisi
   research/    fizibilite, olay çalışması, istatistik, walk-forward, tarama, rapor
   backtest/    olay tabanlı motor ve kıyas ölçütleri
+  risk/        pozisyon büyüklüğü (bütçe/risk sınırı, stepSize kaybı)
+  strategy/    kural deposu, öneri kartı, öneri motoru, sihirbaz, günlük,
+               izleme, maliyet/risk paneli, disiplinli alım planı
+  api/         yerel arayüzün uçları ve statik sayfası (HTML/CSS/JS)
   cli/         komut satırı araçları
 tests/         birim testleri
 docs/          SPEC.md ve faz dokümanları

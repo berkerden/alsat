@@ -15,14 +15,21 @@ cd "$(dirname "$0")" || exit 1
 # "bash kurulum.sh tarama" veri indirme adımını atlar: Faz 2 örüntü taraması
 # internete çıkmaz, veriyi diskteki ./veri klasöründen okur.
 # "bash kurulum.sh teshis" ayrıca maliyetsiz teşhis turunu da çalıştırır.
+# "bash kurulum.sh arayuz" tarama yapmaz; kurulumu tamamlayıp Faz 3
+# arayüzünü açar (yalnızca 127.0.0.1, emir göndermez).
 SADECE_TARAMA=0
 TESHIS=0
+ARAYUZ=0
 case "${1:-}" in
   tarama) SADECE_TARAMA=1 ;;
   teshis) SADECE_TARAMA=1; TESHIS=1 ;;
+  arayuz) ARAYUZ=1 ;;
 esac
 
-baslik "1/5  Python sürümü aranıyor (3.12 veya üstü gerekiyor)"
+ADIM_SAYISI=5
+[ "$ARAYUZ" = "1" ] && ADIM_SAYISI=4
+
+baslik "1/$ADIM_SAYISI  Python sürümü aranıyor (3.12 veya üstü gerekiyor)"
 
 PY=""
 for aday in python3.14 python3.13 python3.12 python3 python; do
@@ -56,7 +63,7 @@ YARDIM
 fi
 tamam "$($PY --version) bulundu ($PY)"
 
-baslik "2/5  Sanal ortam hazırlanıyor"
+baslik "2/$ADIM_SAYISI  Sanal ortam hazırlanıyor"
 if [ ! -d .venv ]; then
   "$PY" -m venv .venv || { hata "Sanal ortam oluşturulamadı."; exit 1; }
 fi
@@ -64,7 +71,7 @@ fi
 source .venv/bin/activate || { hata "Sanal ortam etkinleştirilemedi."; exit 1; }
 tamam "Sanal ortam hazır (.venv)"
 
-baslik "3/5  Bağımlılıklar kuruluyor (ilk seferde birkaç dakika sürebilir)"
+baslik "3/$ADIM_SAYISI  Bağımlılıklar kuruluyor (ilk seferde birkaç dakika sürebilir)"
 python -m pip install --quiet --upgrade pip || uyari "pip güncellenemedi, devam ediliyor."
 if ! python -m pip install --quiet -e ".[dev]"; then
   hata "Bağımlılıklar kurulamadı. İnternet bağlantınızı kontrol edip tekrar deneyin."
@@ -89,14 +96,32 @@ else
   exit 1
 fi
 
+if [ "$ARAYUZ" = "1" ]; then
+  baslik "4/$ADIM_SAYISI  Arayüz açılıyor"
+
+  if [ ! -f veri/kurallar.json ]; then
+    uyari "Kural deposu (veri/kurallar.json) bulunamadı."
+    printf '   Arayüz yine de açılacak, ama öneri üretemez.\n'
+    printf '   Önce örüntü taramasını çalıştırın:  bash kurulum.sh tarama\n\n'
+  fi
+
+  printf '   Arayüz yalnızca kendi bilgisayarınızdan erişilebilir (127.0.0.1).\n'
+  printf '   İnternete çıkmaz, API anahtarı kullanmaz, emir göndermez.\n'
+  printf '   Tarayıcı birkaç saniye içinde kendiliğinden açılacak.\n'
+  printf '   %sKapatmak için bu pencerede Control-C tuşlayın.%s\n\n' "$KALIN" "$SIFIR"
+
+  python -m albsat.cli.serve
+  exit $?
+fi
+
 CIKTI="fizibilite-sonuc.txt"
 
 if [ "$SADECE_TARAMA" = "1" ]; then
-  baslik "4/5  Veri tazeleme atlandı"
+  baslik "4/$ADIM_SAYISI  Veri tazeleme atlandı"
   printf '   "tarama" seçeneğiyle çalıştırıldı; internete çıkılmayacak.\n'
   printf '   Diskteki veri kullanılacak.\n'
 else
-  baslik "4/5  Veri tazeleme ve fizibilite taraması"
+  baslik "4/$ADIM_SAYISI  Veri tazeleme ve fizibilite taraması"
   printf '   BTCUSDT ve SOLUSDT için 204 günlük veri kontrol edilecek.\n'
   printf '   Daha önce indirilmiş dosyalar tekrar indirilmez; yalnızca\n'
   printf '   eksik kalan son mumlar borsadan tamamlanır.\n\n'
@@ -113,7 +138,7 @@ else
   fi
 fi
 
-baslik "5/5  Örüntü keşfi ve backtest (Faz 2)"
+baslik "5/$ADIM_SAYISI  Örüntü keşfi ve backtest (Faz 2)"
 printf '   Bu adım internete çıkmaz; diskteki veriyi okur.\n'
 printf '   BTCUSDT ve SOLUSDT, 15m ve 1h, 2-3-4 mumluk hedef pencereleri.\n'
 printf '   Birkaç dakika sürebilir; ekrana ilerleme yazar.\n\n'
@@ -149,6 +174,7 @@ if [ "$TARAMA_SONUC" = "0" ]; then
     printf '\nRaporu açmak için:  open "%s"\n' "$ORUNTU"
     printf '\nBu dosyanın içeriğini Claude ile paylaşın.\n'
   fi
+  printf '\nArayüzü açmak için:  %sbash kurulum.sh arayuz%s\n' "$KALIN" "$SIFIR"
 else
   hata "Örüntü taraması veriyi bulamadı."
   printf 'Önce veriyi indirmek için şunu çalıştırın:  bash kurulum.sh\n'

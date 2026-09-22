@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Binance Al-Sat — Sadece Öneri</title>
+<link rel="stylesheet" href="/statik/style.css">
+<!-- Simge dosya olarak değil, adresin içinde gömülü duruyor: tarayıcı
+     her açılışta favicon.ico isteyip 404 almasın diye. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230e1116'/%3E%3Crect x='7' y='13' width='4' height='11' fill='%233fb950'/%3E%3Crect x='8.5' y='9' width='1' height='19' fill='%233fb950'/%3E%3Crect x='15' y='16' width='4' height='8' fill='%23f85149'/%3E%3Crect x='16.5' y='12' width='1' height='16' fill='%23f85149'/%3E%3Crect x='23' y='8' width='4' height='14' fill='%233fb950'/%3E%3Crect x='24.5' y='5' width='1' height='20' fill='%233fb950'/%3E%3C/svg%3E">
+</head>
+<body>
+
+<header class="ust">
+  <div class="ust-sol">
+    <h1>Binance Al-Sat</h1>
+    <span class="rozet rozet-mod" id="mod-rozeti">Sadece Öneri</span>
+  </div>
+  <div class="ust-sag" id="veri-ozeti">Yükleniyor…</div>
+</header>
+
+<nav class="sekmeler" id="sekmeler">
+  <button class="sekme etkin" data-sekme="oneriler">Öneriler</button>
+  <button class="sekme" data-sekme="sihirbaz">Periyot sihirbazı</button>
+  <button class="sekme" data-sekme="kutuphane">Örüntü kütüphanesi</button>
+  <button class="sekme" data-sekme="ek">Ek araçlar</button>
+  <button class="sekme" data-sekme="gunluk">Sinyal günlüğü</button>
+</nav>
+
+<div class="secici">
+  <label>Coin
+    <select id="sembol"></select>
+  </label>
+  <label>Periyot
+    <select id="periyot"></select>
+  </label>
+  <button id="yenile" class="dugme">Yenile</button>
+</div>
+
+<main>
+
+<section class="panel" id="panel-oneriler">
+  <div id="grafik-kutu" class="grafik-kutu">
+    <canvas id="grafik" height="260"></canvas>
+    <div class="grafik-alt" id="grafik-alt"></div>
+  </div>
+  <div id="oneri-icerik"><p class="bekle">Yükleniyor…</p></div>
+  <div class="ornek-satir">
+    <button id="ornek-dugme" class="dugme dugme-ikincil">Kart şablonunu örnek kuralla göster</button>
+    <span class="ipucu">Örnek kart bir öneri değildir; kartın hangi alanları
+      dolduracağını ve marj hesabının doğruluğunu gösterir.</span>
+  </div>
+</section>
+
+<section class="panel gizli" id="panel-sihirbaz">
+  <div id="sihirbaz-icerik"><p class="bekle">Yükleniyor…</p></div>
+</section>
+
+<section class="panel gizli" id="panel-kutuphane">
+  <div id="kutuphane-icerik"><p class="bekle">Yükleniyor…</p></div>
+</section>
+
+<section class="panel gizli" id="panel-ek">
+  <p class="ek-giris">
+    Bu bölüm ana akışın yanında durur: sık al-sat yerine <strong>izleme</strong>,
+    <strong>maliyet/risk hesabı</strong> ve <strong>disiplinli alım</strong>.
+    Hiçbiri emir göndermez.
+  </p>
+
+  <details open>
+    <summary>İzleme</summary>
+    <div id="izleme-icerik"><p class="bekle">Yükleniyor…</p></div>
+  </details>
+
+  <details>
+    <summary>Maliyet ve risk hesabı</summary>
+    <form id="mr-form" class="form-satir">
+      <label>Giriş <input name="giris" inputmode="decimal" required></label>
+      <label>Hedef <input name="hedef" inputmode="decimal" required></label>
+      <label>Stop <input name="stop" inputmode="decimal" required></label>
+      <label>Bütçe (USDT) <input name="butce" inputmode="decimal" value="100"></label>
+      <label>Risk %<input name="risk" inputmode="decimal" value="1.0"></label>
+      <label>USDT/TRY <input name="try_kuru" inputmode="decimal" placeholder="isteğe bağlı"></label>
+      <button class="dugme" type="submit">Hesapla</button>
+    </form>
+    <div id="mr-icerik"></div>
+  </details>
+
+  <details>
+    <summary>Disiplinli alım planı</summary>
+    <form id="plan-form" class="form-satir">
+      <label>Bütçe (USDT) <input name="butce" inputmode="decimal" value="100"></label>
+      <label>Dilim <input name="dilim" type="number" min="1" max="52" value="4"></label>
+      <label>Kip
+        <select name="kip">
+          <option value="donemsel">Dönemsel (her n günde bir)</option>
+          <option value="kademeli">Kademeli (fiyat düştükçe)</option>
+        </select>
+      </label>
+      <label>Aralık (gün) <input name="aralik_gun" type="number" min="1" max="365" value="7"></label>
+      <label>Basamak %<input name="basamak_yuzde" inputmode="decimal" value="2"></label>
+      <button class="dugme" type="submit">Planı çıkar</button>
+    </form>
+    <div id="plan-icerik"></div>
+  </details>
+</section>
+
+<section class="panel gizli" id="panel-gunluk">
+  <div id="gunluk-icerik"><p class="bekle">Yükleniyor…</p></div>
+</section>
+
+</main>
+
+<footer class="alt">
+  <p id="uyari-metni">
+    Öneriler geçmiş verilere dayalı istatistiksel çıkarımlardır, yatırım
+    tavsiyesi değildir; geçmiş performans geleceği garanti etmez.
+  </p>
+  <p class="alt-kucuk" id="saglik-satiri"></p>
+</footer>
+
+<script src="/statik/grafik.js"></script>
+<script src="/statik/app.js"></script>
+</body>
+</html>
