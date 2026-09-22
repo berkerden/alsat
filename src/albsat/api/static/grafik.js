@@ -19,11 +19,18 @@
     stop: "#f85149",
   };
 
+  const VARSAYILAN_YUKSEKLIK = 260;
+
   function ciz(canvas, mumlar, cizgiler) {
     const ctx = canvas.getContext("2d");
     const oran = global.devicePixelRatio || 1;
     const genislik = canvas.clientWidth || 600;
-    const yukseklik = parseInt(canvas.getAttribute("height"), 10) || 260;
+    // Yükseklik canvas'ın "height" özniteliğinden OKUNMAZ: aşağıda
+    // canvas.height'a piksel oranıyla çarpılmış değer yazılıyor ve o
+    // öznitelik de onunla değişiyor. Geri okumak, Retina ekranda (oran 2)
+    // grafiği her çizimde ikiye katlıyordu: 260 → 520 → 1040 → ...
+    // "data-yukseklik" hiç yazılmadığı için her seferinde aynı kalır.
+    const yukseklik = Number(canvas.dataset.yukseklik) || VARSAYILAN_YUKSEKLIK;
 
     canvas.width = genislik * oran;
     canvas.height = yukseklik * oran;

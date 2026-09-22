@@ -121,7 +121,7 @@ details > *:not(summary) { padding: 0 16px 14px; }
 .form-satir button { align-self: flex-end; }
 
 .grafik-kutu { background: var(--kart); border: 1px solid var(--cizgi); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 14px; }
-#grafik { width: 100%; display: block; }
+#grafik { width: 100%; height: 260px; display: block; }
 .grafik-alt { color: var(--yazi-2); font-size: 12px; margin-top: 6px; }
 
 .ornek-satir { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 4px 0 20px; }

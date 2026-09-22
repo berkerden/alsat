@@ -264,3 +264,30 @@ def test_sunucu_yalnizca_yerel_adrese_baglanir():
 def test_uyari_metni_her_yanitta_ulasilabilir(client):
     veri = client.get("/api/durum").json()
     assert "yatırım tavsiyesi değildir" in veri["uyari"]
+
+
+# --- grafik ----------------------------------------------------------------
+
+def test_grafik_yuksekligi_canvas_ozniteliginden_geri_okunmuyor():
+    """Retina ekranda grafik her "Yenile"de ikiye katlanıyordu (22 Eylül 2026).
+
+    Sebep: ``grafik.js`` yüksekliği canvas'ın ``height`` özniteliğinden
+    okuyor, sonra oraya piksel oranıyla çarpılmış değeri yazıyordu; bir
+    sonraki çizim büyümüş değeri okuyordu (260 → 520 → 1040 ...). Piksel
+    oranı 1 olan ekranda görünmüyordu. Tarayıcı testi bu depoda Node
+    gerektirmesin diye, hatanın mekanizması burada metin olarak korunuyor.
+    """
+    from albsat.api.app import STATIC_DIR
+
+    grafik = (STATIC_DIR / "grafik.js").read_text(encoding="utf-8")
+    sayfa = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+
+    assert 'getAttribute("height")' not in grafik
+    assert "getAttribute('height')" not in grafik
+    assert "canvas.height =" in grafik           # tampon hâlâ ayarlanıyor
+    assert "dataset.yukseklik" in grafik         # yükseklik buradan okunuyor
+
+    import re
+    canvas = re.search(r"<canvas[^>]*id=\"grafik\"[^>]*>", sayfa).group(0)
+    assert " height=" not in canvas
+    assert "data-yukseklik" in canvas
