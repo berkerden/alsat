@@ -373,10 +373,13 @@ Demo seçeneği.
   kuyruk sırası ve kayma canlıdan farklı olabilir.
 - **Demo bir avantaj üretmez, yürütmeyi sınar.** Faz 2'nin bulgusu geçerli:
   bu kapsamda maliyet sonrası yön bilgisi bulunmadı.
-- **Berk'in Mac'inde henüz sınanmayanlar:** Demo'da "Kendi ürettiğim"
-  (Ed25519) anahtar seçeneği, gerçek Demo hesap akışı, OTOCO'nun gerçek
-  borsadaki davranışı, girişi bekleyen hedef/stopun kimlikle sorgulanıp
-  sorgulanamadığı. `demo-sina` bunların hepsini ekrana yazar.
+- **Gerçek Demo'da görülenler ve görülmeyenler.** 23 Eylül 2026'da Berk'in
+  Mac'inde görüldü: Demo'da kendi üretilmiş Ed25519 anahtar kabul ediliyor,
+  hesap akışı olay getiriyor, OTOCO kabul ediliyor, girişi bekleyen
+  hedef/stop kimlikle sorgulanabiliyor (`PENDING_NEW`), iptal akıştan
+  geliyor, giriş dolunca hedef ve stop borsaya konuyor. Yalnızca kaos
+  testiyle sınananlar: kısmi dolum → OCO, korumalı çıkış, yeniden koruma,
+  süresi dolan stop, uykudan sonra uzlaştırma, 429/418.
 - Mac uyurken borsadaki stop ve hedef çalışır, ama **yeniden koruma** (kısmi
   dolum, süresi dolan stop) uygulama uyanınca yapılır.
 
@@ -384,5 +387,17 @@ Demo seçeneği.
 
 ## 14. Onay
 
-Faz 5, Berk'in onayını bekliyor. Onaydan önce Berk'in Mac'inde yapılacaklar:
-`demo-anahtar`, `demo-sina`, arayüzde küçük bir elle Demo emri.
+**Faz 5, 23 Eylül 2026'da onaylandı** (Berk: *"evet onaylıyorum"*). Onaydan
+önce Berk'in Mac'inde:
+
+- `demo-anahtar`: ilk denemede hesabın `canWithdraw` bayrağı yanlışlıkla
+  anahtarın çekim izni sayıldı ve doğru anahtar reddedildi; düzeltildi
+  (`c8d12ea`, §9). Sonra geçti: saat farkı 433 ms, Demo komisyonu maker ve
+  taker %0.1.
+- `demo-sina`: altı adımın hepsi geçti; emir gönderildi, akıştan izlendi,
+  iptal edildi.
+- Arayüzden elle Demo emri: BTCUSDT girişi 84597.19'dan doldu, hedef 87000 ve
+  stop 83000 borsaya kondu. Satış miktarı komisyon düşülüp önceki tozla
+  tamamlanarak 0.00056 BTC oldu (§4.1).
+
+Faz 6 için devir notu: `docs/DEVIR-NOTU.md`.
