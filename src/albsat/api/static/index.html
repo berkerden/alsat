@@ -21,11 +21,12 @@
   </div>
   <div class="ust-sag">
     <span id="veri-ozeti">Yükleniyor…</span>
-    <!-- Her sekmeden erişilebilir (SPEC §4.6). Kâğıt işlemi ve Demo'yu kapatır,
-         bekleyen girişleri (Demo'da borsadakileri de) iptal eder; açık
-         pozisyonların stop ve hedefi yerinde kalır. -->
+    <!-- Her sekmeden erişilebilir (SPEC §4.6). Kâğıt işlemi, Demo'yu ve canlı
+         işlemi kapatır, bekleyen girişleri (Demo'da ve canlı hesapta
+         borsadakileri de) iptal eder; açık pozisyonların stop ve hedefi
+         yerinde kalır. -->
     <button id="acil-durdur" class="dugme dugme-tehlike" type="button"
-            title="Kâğıt işlemi ve Demo'yu kapatır, bekleyen girişleri iptal eder; stoplar yerinde kalır">ACİL DURDUR</button>
+            title="Kâğıt işlemi, Demo'yu ve canlı işlemi kapatır, bekleyen girişleri iptal eder; stoplar yerinde kalır">ACİL DURDUR</button>
   </div>
 </header>
 
@@ -37,6 +38,7 @@
   <button class="sekme" data-sekme="gunluk">Sinyal günlüğü</button>
   <button class="sekme" data-sekme="kagit">Kâğıt işlem</button>
   <button class="sekme" data-sekme="demo">Demo işlem</button>
+  <button class="sekme sekme-canli" data-sekme="canli">Canlı işlem</button>
 </nav>
 
 <div class="secici">
@@ -269,6 +271,89 @@
   </details>
 </section>
 
+<section class="panel gizli" id="panel-canli">
+  <div id="canli-uyari"></div>
+  <p class="ek-giris">
+    Canlı işlem, emirleri <strong>gerçek Binance hesabınıza</strong> gönderir:
+    para gerçektir. Yalnızca spot alış ve satış yapılır; kaldıraç, marjin,
+    vadeli işlem ve borç yoktur. Her emir kâğıt işlemdeki risk kapılarından ve
+    buradaki emir tavanından geçer; borsaya giren her alışın hemen ardından
+    stop ve hedef de borsaya konur. <strong>Yarı Otomatik</strong>'te her emir
+    sizin onayınızla gider; <strong>Tam Otomatik</strong> ancak canlıya geçiş
+    kapısını geçen bir kural için açılabilir.
+  </p>
+  <div id="canli-baglanti"></div>
+  <div id="canli-modlar"></div>
+  <div id="canli-oneriler"></div>
+  <div id="canli-kapi"></div>
+  <div id="canli-hesap"></div>
+  <div id="canli-risk"></div>
+  <div id="canli-aktif"></div>
+
+  <div class="kutu kutu-canli" id="canli-elle">
+    <h2 id="canli-elle-baslik">Elle canlı emir</h2>
+    <p class="kart-etiket">
+      Coin ve periyot üstteki seçicilerden gelir. Giriş, canlı defterdeki bir
+      alış limit emridir (LIMIT_MAKER: hemen eşleşecekse borsa reddeder). Giriş
+      dolunca stop ve hedef tek bir OCO olarak borsada bekler. Tutar boş
+      bırakılırsa risk kuralının hesapladığı tutar kullanılır; hiçbir durumda
+      emir tavanını aşamaz. Önce "Önizle" ile borsaya gidecek emirleri görün.
+      Elle emirler canlıya geçiş kapısında sayılmaz.
+    </p>
+    <form id="canli-elle-form" class="form-satir" autocomplete="off">
+      <label>Giriş (alış limiti) <input name="giris" inputmode="decimal" required></label>
+      <label>Hedef <input name="hedef" inputmode="decimal" required></label>
+      <label>Stop <input name="stop" inputmode="decimal" required></label>
+      <label>Giriş bekler (mum)
+        <input name="gecerlilik_mum" type="number" min="1" max="8" value="1">
+      </label>
+      <label>En fazla tutulur (mum)
+        <input name="azami_tutma_mum" type="number" min="1" max="24" value="4">
+      </label>
+      <label>Tutar (USDT, isteğe bağlı)
+        <input name="tutar_usdt" inputmode="decimal" placeholder="risk kuralı">
+      </label>
+      <label>Onay için coin adını yazın
+        <input name="onay" maxlength="20" autocapitalize="characters" spellcheck="false">
+      </label>
+      <button class="dugme dugme-ikincil" type="button" id="canli-elle-fiyat">Piyasa alışını yaz</button>
+      <button class="dugme dugme-ikincil" type="submit" data-eylem="onizle">Önizle</button>
+      <button class="dugme dugme-tehlike" type="submit" data-eylem="gonder">Canlı emri gönder</button>
+    </form>
+    <p class="kart-etiket" id="canli-elle-ipucu"></p>
+    <div id="canli-elle-sonuc"></div>
+  </div>
+
+  <div id="canli-sonuclar"></div>
+  <div id="canli-gecmis"></div>
+
+  <details id="canli-ayar-kutu">
+    <summary>Emir tavanı ve emir ayarları</summary>
+    <div id="canli-ayarlar"><p class="bekle">Yükleniyor…</p></div>
+  </details>
+
+  <details id="canli-ayrinti-kutu">
+    <summary>Bağlantı, anahtar izinleri, istek bütçesi ve olaylar</summary>
+    <div id="canli-ayrinti"><p class="bekle">Yükleniyor…</p></div>
+  </details>
+
+  <details id="canli-sifirla-kutu">
+    <summary>Canlı bot dönemini sıfırla</summary>
+    <div>
+      <p class="kart-etiket">
+        Botun canlı hesaptaki sonuç sayımını yeni bir dönemle başlatır: bot
+        bütçesi risk limitlerindeki bütçeye döner. Binance hesabınızdaki
+        bakiyeye dokunmaz. Eski işlemler silinmez, CSV'de kalır. Açık canlı
+        pozisyon ya da bekleyen emir varken yapılamaz.
+      </p>
+      <form id="canli-sifirla-form" class="form-satir" autocomplete="off">
+        <label>Onay için SIFIRLA yazın <input name="onay" maxlength="20"></label>
+        <button class="dugme dugme-tehlike" type="submit">Dönemi sıfırla</button>
+      </form>
+    </div>
+  </details>
+</section>
+
 </main>
 
 <footer class="alt">
@@ -285,5 +370,6 @@
 <script src="/statik/app.js?v={{SURUM}}"></script>
 <script src="/statik/kagit.js?v={{SURUM}}"></script>
 <script src="/statik/demo.js?v={{SURUM}}"></script>
+<script src="/statik/canli.js?v={{SURUM}}"></script>
 </body>
 </html>

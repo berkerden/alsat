@@ -37,7 +37,7 @@ from albsat.api.runtime import Runtime
 from albsat.api.serialize import money, percent
 from albsat.core.audit import SOURCE_UI
 from albsat.core.clock import istanbul_text, utc_now
-from albsat.execution.executor import DemoAccountView, DemoExecutor
+from albsat.execution.executor import DemoAccountView, DemoExecutor, OrderExecutor
 from albsat.execution.planner import Plan
 from albsat.execution.settings import STOP_TYPES_TR, SettingsError
 from albsat.paper.engine import OrderMeta
@@ -136,7 +136,7 @@ def book_json(executor: DemoExecutor, runtime: Runtime, now: datetime) -> list[d
     return rows
 
 
-def settings_json(executor: DemoExecutor) -> dict[str, Any]:
+def settings_json(executor: OrderExecutor) -> dict[str, Any]:
     current = executor.settings
     return {
         "degerler": current.as_dict(),
@@ -157,8 +157,8 @@ def settings_json(executor: DemoExecutor) -> dict[str, Any]:
                          "edilip dolan kısma stop ve hedef konur."},
             {"ad": "yeniden_fiyatlama_denemesi", "etiket": "Yeniden fiyatlama denemesi",
              "tur": "tam", "aralik": "0 – 5",
-             "aciklama": "Kural emrinin girişi Demo defterinde hemen eşleşeceği için "
-                         "reddedilirse en iyi alışa çekilip en fazla bu kadar yeniden "
+             "aciklama": f"Kural emrinin girişi {executor.venue.defterde} hemen eşleşeceği "
+                         "için reddedilirse en iyi alışa çekilip en fazla bu kadar yeniden "
                          "gönderilir. Elle emirde yapılmaz."},
         ],
     }

@@ -193,7 +193,7 @@ class ApiFailure(Exception):
 
 
 class FakeBinance:
-    """Tek hesaplı, tek süreçli sahte Demo Mode borsası."""
+    """Tek hesaplı, tek süreçli sahte borsa (Demo Mode ya da canlı; aynı kurallar)."""
 
     def __init__(self, *, clock_ms: Callable[[], int], public_pem: str, api_key: str,
                  usdt: Decimal = START_USDT) -> None:
@@ -219,6 +219,15 @@ class FakeBinance:
         self.lost_events = 0
         self.can_withdraw = False
         self.can_trade = True
+        #: Anahtarın izinleri (``/sapi/v1/account/apiRestrictions``; yalnızca canlı).
+        self.restrictions: dict[str, Any] = {
+            "ipRestrict": False, "createTime": 1_700_000_000_000, "enableReading": True,
+            "enableSpotAndMarginTrading": True, "enableWithdrawals": False,
+            "enableInternalTransfer": False, "enableMargin": False, "enableFutures": False,
+            "permitsUniversalTransfer": False, "enableVanillaOptions": False,
+            "enablePortfolioMarginTrading": False, "enableFixApiTrade": False,
+            "enableFixReadOnly": False,
+        }
         #: OTOCO'nun bekleyen bacakları sorguda görünsün mü (belgede açık değil).
         self.pending_queryable = True
         self.order_count_10s = 0
@@ -367,6 +376,8 @@ class FakeBinance:
                              for asset, (free, locked) in self.balances.items()
                              if free or locked],
             }
+        if key == ("GET", "/sapi/v1/account/apiRestrictions"):
+            return dict(self.restrictions)
         if key == ("GET", "/api/v3/account/commission"):
             rates = {"maker": _s(FEE), "taker": _s(FEE), "buyer": "0.00000000",
                      "seller": "0.00000000"}

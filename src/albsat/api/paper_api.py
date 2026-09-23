@@ -27,7 +27,13 @@ from albsat.api.serialize import money, percent, position
 from albsat.core.audit import SOURCE_UI, AuditEntry
 from albsat.core.clock import from_ms, istanbul_text, utc_now
 from albsat.core.fees import Side
-from albsat.modes.state import LOCKED, MODE_LABELS_TR, MODE_PAPER, SELECTABLE, ModeError
+from albsat.modes.state import (
+    LIVE_ONLY_TR,
+    MODE_LABELS_TR,
+    MODE_PAPER,
+    PAPER_TAB_MODES,
+    ModeError,
+)
 from albsat.notify.base import KIND_LIMIT, Notice
 from albsat.paper import report
 from albsat.paper.engine import AccountView, OrderMeta, time_left_text
@@ -426,11 +432,12 @@ def register(app: FastAPI, get_runtime: Callable[[], Runtime | None]) -> None:
             "zaman": istanbul_text(now),
             "modlar": modes_json(runtime),
             "secilebilir_modlar": [
-                {"mod": mode, "etiket": MODE_LABELS_TR[mode]} for mode in SELECTABLE
+                {"mod": mode, "etiket": MODE_LABELS_TR[mode]} for mode in PAPER_TAB_MODES
             ],
-            "kilitli_modlar": [
-                {"mod": mode, "etiket": MODE_LABELS_TR[mode], "ne_zaman": when}
-                for mode, when in LOCKED.items()
+            # Canlı modlar bu sekmede seçilmez; yalnızca nereden açıldıkları yazılır.
+            "canli_modlar": [
+                {"mod": mode, "etiket": MODE_LABELS_TR[mode], "aciklama": text}
+                for mode, text in LIVE_ONLY_TR.items()
             ],
             "demo_hazir_degil": (
                 "Demo bağlantısı bu çalıştırmada kurulmadı." if runtime.demo is None

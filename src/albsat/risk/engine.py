@@ -37,7 +37,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from decimal import Decimal
 
@@ -48,7 +48,7 @@ from albsat.core.money import ONE_HUNDRED, ZERO
 from albsat.data.klines import interval_ms
 from albsat.risk.limits import RiskLimits
 from albsat.risk.market import Gate, MarketState, market_gates
-from albsat.risk.sizing import PositionSize, size_position
+from albsat.risk.sizing import Binding, PositionSize, size_position
 
 SOURCE_RULE = "kural"
 SOURCE_MANUAL = "elle"
@@ -273,8 +273,14 @@ def evaluate(
     mode_open: bool,
     mode_text: str = "",
     disabled_rules: Sequence[str] = (),
+    max_notional_usdt: Decimal | None = None,
 ) -> RiskDecision:
-    """Bir emrin bütün risk kapılarını değerlendirir."""
+    """Bir emrin bütün risk kapılarını değerlendirir.
+
+    ``max_notional_usdt`` verilirse emrin tutarı (fiyat × miktar) onu aşmaz: bütçe
+    gibi bağlayıcı olur (Faz 6: canlı emir tavanı ve elle yazılan tutar). Bütçeyi
+    daralttıysa bağlayıcı ``Binding.CAP`` yazılır; işlem başı risk yine bot bütçesinden
+    hesaplanır."""
     gates: list[Gate] = []
     now = as_utc(now)
 
@@ -414,6 +420,9 @@ def evaluate(
     # Büyüklük: bütçe ile serbest bakiyenin küçüğü kullanılır.
     position: PositionSize | None = None
     budget = min(limits.butce_usdt, snapshot.serbest_usdt)
+    capped = max_notional_usdt is not None and max_notional_usdt < budget
+    if max_notional_usdt is not None:
+        budget = min(budget, max_notional_usdt)
     if prices_ok and budget > ZERO:
         position = size_position(
             entry=intent.giris,
@@ -427,6 +436,8 @@ def evaluate(
             exit_slippage_pct=exit_slippage_pct,
             costs_in_risk=True,
         )
+        if capped and position.baglayici is Binding.BUDGET:
+            position = replace(position, baglayici=Binding.CAP)
     if position is None:
         gates.append(
             Gate(

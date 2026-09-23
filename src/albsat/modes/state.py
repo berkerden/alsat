@@ -1,11 +1,13 @@
 """Coin başına çalışma modu (SPEC.md §4.7).
 
-Faz 5'te seçilebilen modlar: **Kapalı**, **Sadece Öneri**, **Kâğıt İşlem**,
-**Demo Mode**. Demo Mode'da emirler Binance Demo Mode hesabına gerçekten
-gönderilir (sahte para); bu mod ancak Demo bağlantısı hazırsa seçilebilir
-(``PaperEngine.set_mode`` denetler). Yarı Otomatik ve Tam Otomatik listede
-görünür ama kilitlidir; canlı işlem Faz 6'da gelir. Kilitli bir moda geçmeye
-çalışmak reddedilir ve nedeni söylenir.
+Modlar: **Kapalı**, **Sadece Öneri**, **Kâğıt İşlem**, **Demo Mode** (Faz 5),
+**Yarı Otomatik** ve **Tam Otomatik** (Faz 6, canlı hesap, gerçek para).
+Demo Mode'da emirler Binance Demo Mode hesabına gerçekten gönderilir (sahte
+para); bu mod ancak Demo bağlantısı hazırsa seçilebilir. Yarı Otomatik ve Tam
+Otomatik canlı hesaba emir gönderir: ikisi de yalnızca Canlı işlem sekmesinden
+açılır (``PaperEngine.set_mode`` ``allow_live`` olmadan reddeder), ancak canlı
+bağlantı hazırsa seçilebilir, ve Tam Otomatik ayrıca canlıya geçiş kapısını
+geçmiş bir kural ister (``execution/gate.py``).
 
 **Uygulama her açılışta Sadece Öneri modunda başlar** (SPEC §2, sabit
 karar; Demo Mode dahil). Bir önceki oturumda kâğıt işlemde ya da Demo'da
@@ -42,18 +44,23 @@ MODE_LABELS_TR = {
     MODE_FULL: "Tam Otomatik",
 }
 
-#: Bu fazda seçilebilen modlar.
-SELECTABLE = (MODE_OFF, MODE_ADVICE, MODE_PAPER, MODE_DEMO)
+#: Seçilebilen modlar.
+SELECTABLE = (MODE_OFF, MODE_ADVICE, MODE_PAPER, MODE_DEMO, MODE_SEMI, MODE_FULL)
+
+#: Canlı hesaba (gerçek para) emir gönderen modlar.
+LIVE_MODES = (MODE_SEMI, MODE_FULL)
+
+#: Kâğıt işlem sekmesinin mod seçicisindeki modlar; canlı modlar orada yalnızca
+#: bilgi olarak görünür.
+PAPER_TAB_MODES = (MODE_OFF, MODE_ADVICE, MODE_PAPER, MODE_DEMO)
+LIVE_ONLY_TR = {
+    MODE_SEMI: "Canlı işlem sekmesinden açılır (her emir için onay)",
+    MODE_FULL: "Canlı işlem sekmesinden, canlıya geçiş kapısından sonra açılır",
+}
 
 #: Otomatik işlem yapan modlar: bir sınır aşılınca ya da ACİL DURDUR'da
 #: bu modlardaki coinler Sadece Öneri'ye çekilir.
-TRADING_MODES = (MODE_PAPER, MODE_DEMO)
-
-#: Kilitli modlar ve hangi fazda açılacakları.
-LOCKED = {
-    MODE_SEMI: "Faz 6 (canlı, her emir için onay)",
-    MODE_FULL: "Faz 6 (canlı, canlıya geçiş kapısından sonra)",
-}
+TRADING_MODES = (MODE_PAPER, MODE_DEMO, MODE_SEMI, MODE_FULL)
 
 DEFAULT_MODE = MODE_ADVICE
 
@@ -133,13 +140,11 @@ class ModeStore:
         return MODE_OFF
 
     def set(self, symbol: str, mode: str) -> tuple[str, str]:
-        """Modu değiştirir; (eski, yeni) döner. Kilitli/bilinmeyen mod reddedilir."""
+        """Modu değiştirir; (eski, yeni) döner. Bilinmeyen mod reddedilir. Canlı
+        modların ön koşulları (onay, bağlantı, geçiş kapısı) kâğıt motorunun
+        ``set_mode``'unda denetlenir."""
         if symbol not in self.symbols:
             raise ModeError(f"{symbol} izlenen coinler arasında değil.")
-        if mode in LOCKED:
-            raise ModeError(
-                f"{MODE_LABELS_TR[mode]} bu fazda kilitli; {LOCKED[mode]} ile açılacak."
-            )
         if mode not in SELECTABLE:
             raise ModeError(f"Bilinmeyen mod: {mode}")
         old = self.get(symbol)
@@ -158,14 +163,19 @@ class ModeStore:
     def demo_symbols(self) -> tuple[str, ...]:
         return tuple(item.sembol for item in self.all() if item.mod == MODE_DEMO)
 
+    def live_symbols(self) -> tuple[str, ...]:
+        """Yarı ya da Tam Otomatik'te (canlı hesap) olan coinler."""
+        return tuple(item.sembol for item in self.all() if item.mod in LIVE_MODES)
+
     def trading_symbols(self) -> tuple[str, ...]:
-        """Kâğıt işlemde ya da Demo'da olan coinler."""
+        """Kâğıt işlemde, Demo'da ya da canlıda olan coinler."""
         return tuple(item.sembol for item in self.all() if item.mod in TRADING_MODES)
 
 
 __all__ = [
     "DEFAULT_MODE",
-    "LOCKED",
+    "LIVE_MODES",
+    "LIVE_ONLY_TR",
     "MODE_ADVICE",
     "MODE_DEMO",
     "MODE_FULL",
@@ -173,6 +183,7 @@ __all__ = [
     "MODE_OFF",
     "MODE_PAPER",
     "MODE_SEMI",
+    "PAPER_TAB_MODES",
     "SELECTABLE",
     "TRADING_MODES",
     "CoinMode",

@@ -47,12 +47,16 @@ class Binding(str, Enum):
 
     RISK = "risk"
     BUDGET = "butce"
+    #: Bütçeden küçük bir tutar sınırı: canlı emir tavanı ya da elle yazılan tutar
+    #: (Faz 6). Risk motoru, sınır bütçeyi daralttıysa BUDGET'ı buna çevirir.
+    CAP = "tavan"
     NONE = "yok"
 
 
 BINDING_LABELS_TR = {
     Binding.RISK: "risk kuralı",
     Binding.BUDGET: "bütçe",
+    Binding.CAP: "tutar sınırı",
     Binding.NONE: "sınırlanmadı",
 }
 
@@ -111,6 +115,13 @@ class PositionSize:
         """Arayüzde tek satırda gösterilecek "neden bu büyüklük" cümlesi."""
         if not self.gecerli:
             return "Bu bütçeyle geçerli bir emir büyüklüğü çıkmıyor."
+        if self.baglayici is Binding.CAP:
+            return (
+                f"Bağlayıcı olan tutar sınırı: emir en fazla {self.butce_usdt} USDT "
+                f"(canlı emir tavanı ya da yazılan tutar). Stopa düşerse zarar "
+                f"{self.stop_zarari_usdt:.2f} USDT; risk kuralı "
+                f"{self.hedeflenen_risk_usdt:.2f} USDT'ye izin veriyor."
+            )
         if self.baglayici is Binding.BUDGET:
             return (
                 f"Bağlayıcı olan bütçe: {self.butce_usdt} USDT'nin tamamı "

@@ -21,9 +21,9 @@ from __future__ import annotations
 import os
 import stat
 import subprocess
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping
 
 #: Anahtarın Keychain'deki servis adını taşıyan ortam değişkeni.
 ENV_KEYCHAIN_SERVICE = "ALBSAT_KEYCHAIN_SERVICE"
@@ -155,26 +155,32 @@ def looks_like_ed25519(private_key_pem: str) -> bool:
     return "BEGIN" in private_key_pem and "PRIVATE KEY" in private_key_pem
 
 
-def assert_no_withdrawal_permission(account_payload: Mapping[str, object]) -> None:
-    """``GET /api/v3/account`` yanıtını denetler; çekim izni açıksa durdurur.
-
-    DİKKAT (23 Eylül 2026): ``canWithdraw`` hesabın bayrağıdır, API
-    anahtarının izni değil; Binance Demo hesabı bile ``true`` döndürüyor.
-    Anahtarın çekim izni ``/sapi/v1/account/apiRestrictions``'taki
-    ``enableWithdrawals`` ile denetlenir (``signed.restriction_problems``).
-    Bu fonksiyon hiçbir yerden çağrılmıyor; Faz 6'da onun yerine o kullanılmalı.
+def assert_no_withdrawal_permission(restrictions: Mapping[str, object]) -> None:
+    """Anahtarın izinlerini (``GET /sapi/v1/account/apiRestrictions``) denetler;
+    para çekme izni açıksa ya da Spot işlem izni kapalıysa durdurur.
 
     SPEC.md §5: "Uygulama açılışta anahtarın izinlerini kontrol etsin; çekim
     izni açıksa çalışmayı reddetsin."
+
+    Faz 5'te bu işlev ``GET /api/v3/account``'taki ``canWithdraw``'a bakıyordu.
+    O bayrak **hesabın**dır, anahtarın izni değil (Binance Demo hesabı bile
+    ``true`` döndürüyor; 23 Eylül 2026). Faz 6'da anahtarın kendi izinlerini
+    okuyacak biçimde yeniden yazıldı; hesap yanıtı verilirse (``enableWithdrawals``
+    alanı yoksa) karar verilmez ve durdurulur.
     """
-    if account_payload.get("canWithdraw"):
+    if "enableWithdrawals" not in restrictions:
+        raise KeyError_(
+            "Anahtarın izinleri okunamadı (apiRestrictions yanıtı bekleniyordu). "
+            "Hesabın 'canWithdraw' bayrağı anahtarın izni değildir."
+        )
+    if restrictions.get("enableWithdrawals"):
         raise WithdrawalPermissionError(
             "Bu API anahtarında para çekme izni AÇIK. Uygulama bu anahtarla "
             "çalışmayı reddediyor.\n"
             "Binance → API Yönetimi → anahtarı düzenle → 'Para Çekme' iznini "
             "kapatın, ya da izinleri doğru olan yeni bir anahtar oluşturun."
         )
-    if not account_payload.get("canTrade"):
+    if not restrictions.get("enableSpotAndMarginTrading"):
         raise KeyError_(
             "Bu API anahtarında Spot işlem izni kapalı; emir gönderilemez."
         )

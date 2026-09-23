@@ -62,6 +62,14 @@ emir:
   # Bu değerler src/albsat/execution/settings.py'deki varsayılanlarla aynı olmalı
   # (tests/test_demo_yurutme.py denetler). Arayüzden değiştirilen değer veritabanında durur.
 
+canli:
+  # Faz 6. Canlı hesaba (gerçek para) giden her giriş emrinin en büyük tutarı (USDT).
+  # Arayüzden değiştirilir, bot bütçesini aşamaz. Risk motoru emri buna göre
+  # boyutlar; emri imzalayan sınıf göndermeden önce ayrıca sınar.
+  # src/albsat/execution/live.py'deki DEFAULT_CAP_USDT ile aynı olmalı
+  # (tests/test_canli.py denetler).
+  emir_tavani_usdt: "10"
+
 veri:
   periyotlar: ["1m", "5m", "15m", "1h"]
   semboller: ["BTCUSDT", "SOLUSDT"]

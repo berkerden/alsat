@@ -3,8 +3,13 @@ import pytest
 
 from albsat.exchange import keys
 from albsat.exchange.keys import (
-    ApiCredentials, KeyError_, SecretText, WithdrawalPermissionError,
-    assert_no_withdrawal_permission, load_credentials, looks_like_ed25519,
+    ApiCredentials,
+    KeyError_,
+    SecretText,
+    WithdrawalPermissionError,
+    assert_no_withdrawal_permission,
+    load_credentials,
+    looks_like_ed25519,
 )
 
 PEM = "-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIA==\n-----END PRIVATE KEY-----"
@@ -86,18 +91,30 @@ def test_hmac_anahtari_ed25519_degildir():
 
 
 def test_cekim_izni_acikken_calisma_reddedilir():
+    # Karar anahtarın kendi izinleriyle (apiRestrictions) verilir.
     with pytest.raises(WithdrawalPermissionError, match="para çekme izni AÇIK"):
         assert_no_withdrawal_permission(
-            {"canTrade": True, "canWithdraw": True, "canDeposit": True}
+            {"enableReading": True, "enableSpotAndMarginTrading": True,
+             "enableWithdrawals": True}
         )
 
 
 def test_islem_izni_kapaliysa_reddedilir():
     with pytest.raises(KeyError_, match="Spot işlem izni kapalı"):
-        assert_no_withdrawal_permission({"canTrade": False, "canWithdraw": False})
+        assert_no_withdrawal_permission(
+            {"enableReading": True, "enableSpotAndMarginTrading": False,
+             "enableWithdrawals": False})
+
+
+def test_hesap_yaniti_anahtar_izni_sayilmaz():
+    # /api/v3/account'taki canWithdraw hesabın bayrağıdır (Demo hesabı bile true
+    # döndürüyor); bu yanıtla karar verilmez, durdurulur.
+    with pytest.raises(KeyError_, match="canWithdraw"):
+        assert_no_withdrawal_permission({"canTrade": True, "canWithdraw": False})
 
 
 def test_dogru_izinler_gecer():
-    assert_no_withdrawal_permission(
-        {"canTrade": True, "canWithdraw": False, "canDeposit": True}
+    assert assert_no_withdrawal_permission(
+        {"enableReading": True, "enableSpotAndMarginTrading": True,
+         "enableWithdrawals": False, "ipRestrict": False}
     ) is None

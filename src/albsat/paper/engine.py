@@ -52,8 +52,10 @@ from albsat.core.filters import SymbolRules
 from albsat.core.money import ZERO, format_for_api
 from albsat.data.klines import interval_ms
 from albsat.modes.state import (
+    LIVE_MODES,
     MODE_ADVICE,
     MODE_DEMO,
+    MODE_FULL,
     MODE_LABELS_TR,
     MODE_PAPER,
     ModeError,
@@ -184,6 +186,10 @@ class PaperEngine:
         self.halt_hooks: list[Callable[[str, str], None]] = []
         #: Demo Mode seçilebilir mi? ``None`` dönerse evet, yoksa sebep metni.
         self.demo_ready: Callable[[], str | None] | None = None
+        #: Faz 6: canlı modlar (Yarı/Tam Otomatik) seçilebilir mi? Canlı yürütücü bağlar.
+        self.live_ready: Callable[[], str | None] | None = None
+        #: Faz 6: bu coinde Tam Otomatik açılabilir mi (canlıya geçiş kapısı)?
+        self.full_auto_check: Callable[[str], str | None] | None = None
 
     # --- okuma ----------------------------------------------------------
 
@@ -787,7 +793,8 @@ class PaperEngine:
         )
         self.notifier.send(
             f"⛔ OTOMATİK İŞLEM DURDU — {title}\n{detail}\n"
-            f"Kâğıt işlemden ve Demo'dan çıkarılan coinler: {', '.join(switched) or 'yok'}. "
+            f"Otomatik işlemden (kâğıt, Demo, canlı) çıkarılan coinler: "
+            f"{', '.join(switched) or 'yok'}. "
             "Bekleyen girişler iptal edildi. Açık pozisyonların stop ve hedefi yerinde. "
             "Yeniden başlatmak arayüzden elle yapılır.",
             kind=kind,
@@ -796,13 +803,32 @@ class PaperEngine:
 
     # --- kullanıcı eylemleri --------------------------------------------------
 
-    def set_mode(self, sembol: str, mode: str, *, source: str, now: datetime) -> tuple[str, str]:
+    def set_mode(self, sembol: str, mode: str, *, source: str, now: datetime,
+                 allow_live: bool = False) -> tuple[str, str]:
+        """Modu değiştirir. Canlı modlar (Yarı/Tam Otomatik) yalnızca ``allow_live``
+        ile (Canlı işlem sekmesinin onaylı ucundan) açılır; Tam Otomatik ayrıca
+        canlıya geçiş kapısını ister. Canlı moddan çıkmak her yerden serbesttir."""
         with self.lock:
-            if mode == MODE_DEMO and self.modes.get(sembol) != MODE_DEMO:
+            current = self.modes.get(sembol)
+            if mode == MODE_DEMO and current != MODE_DEMO:
                 reason = ("Demo bağlantısı bu çalıştırmada kurulmadı." if self.demo_ready is None
                           else self.demo_ready())
                 if reason is not None:
                     raise ModeError(f"Demo Mode seçilemiyor: {reason}")
+            if mode in LIVE_MODES and current != mode:
+                label = MODE_LABELS_TR[mode]
+                if not allow_live:
+                    raise ModeError(f"{label} gerçek parayla işlem yapar; yalnızca Canlı işlem "
+                                    "sekmesinden, onayla açılır.")
+                reason = ("Canlı bağlantı bu çalıştırmada kurulmadı." if self.live_ready is None
+                          else self.live_ready())
+                if reason is not None:
+                    raise ModeError(f"{label} seçilemiyor: {reason}")
+                if mode == MODE_FULL:
+                    gate = ("Canlıya geçiş kapısı bu çalıştırmada kurulmadı."
+                            if self.full_auto_check is None else self.full_auto_check(sembol))
+                    if gate is not None:
+                        raise ModeError(f"Tam Otomatik açılamaz: {gate}")
             old, new = self.modes.set(sembol, mode)
             if old != new:
                 self.audit.write(

@@ -1,9 +1,10 @@
-"""Çalışan parçalar: kâğıt motoru, canlı döngü, bildirimler, Demo yürütücüsü.
+"""Çalışan parçalar: kâğıt motoru, canlı döngü, bildirimler, Demo ve canlı yürütücüler.
 
 Arayüz sunucusu açılırken bir kez kurulur ve kapanırken durdurulur. Testler
 aynı nesneyi ağa çıkmadan (``online=False``) kurar; o durumda canlı döngü
-yoktur, kâğıt motoru ve bildirimler vardır. Demo yürütücüsü her zaman kurulur;
-ağ ya da anahtar yoksa emir gönderemez ve nedenini söyler (Faz 5).
+yoktur, kâğıt motoru ve bildirimler vardır. Demo (Faz 5) ve canlı (Faz 6)
+yürütücüler her zaman kurulur; ağ ya da anahtar yoksa emir gönderemez ve
+nedenini söyler.
 """
 
 from __future__ import annotations
@@ -26,7 +27,8 @@ from albsat.exchange.endpoints import Environment, endpoints_for
 from albsat.exchange.http import PublicHttp
 from albsat.exchange.ratelimit import RequestBudget
 from albsat.execution.executor import DemoExecutor
-from albsat.execution.service import build_executor
+from albsat.execution.live import LiveExecutor
+from albsat.execution.service import build_executor, build_live_executor
 from albsat.modes.state import MODE_PAPER, ModeStore
 from albsat.notify.base import KIND_LIMIT, MemoryNotifier
 from albsat.paper.engine import PaperEngine
@@ -48,6 +50,7 @@ class Runtime:
     market: LiveMarket
     runner: LiveRunner | None = None
     demo: DemoExecutor | None = None
+    live: LiveExecutor | None = None
     telegram: Any = None
     telegram_commands: Any = None
     telegram_note: str = ""
@@ -66,6 +69,8 @@ class Runtime:
         environment: Environment = Environment.LIVE,
         use_demo: bool = True,
         demo_key_loader: Any = None,
+        use_live: bool = True,
+        live_key_loader: Any = None,
     ) -> Runtime:
         root = Path(root)
         symbols = tuple(symbols)
@@ -99,6 +104,7 @@ class Runtime:
                 if item.onceki_oturum == MODE_PAPER
             )},
         )
+        budget: RequestBudget | None = None
         if online:
             endpoints = endpoints_for(environment)
             budget = RequestBudget(on_ban=lambda text: notifier.send(
@@ -114,8 +120,17 @@ class Runtime:
             root, symbols=symbols, engine=engine, live_market=market, notifier=notifier,
             online=online and use_demo, key_loader=demo_key_loader,
         )
+        # Canlı hesap yalnızca canlı piyasayla (``Environment.LIVE``) açılır ve canlı
+        # piyasa istemcisinin istek bütçesini paylaşır (ağırlık sınırı IP başına).
+        live_online = online and use_live and environment == Environment.LIVE
+        runtime.live = build_live_executor(
+            root, symbols=symbols, engine=engine, live_market=market, notifier=notifier,
+            online=live_online, budget=budget if live_online else None,
+            ruleset_loader=lambda: _load_rules(root), key_loader=live_key_loader,
+        )
         if runtime.runner is not None:
             runtime.runner.demo = runtime.demo
+            runtime.runner.live = runtime.live
         return runtime
 
     # --- yaşam döngüsü ------------------------------------------------
@@ -129,8 +144,12 @@ class Runtime:
             self.runner.start()
         if self.demo is not None:
             self.demo.start()
+        if self.live is not None:
+            self.live.start()
 
     def stop(self) -> None:
+        if self.live is not None:
+            self.live.stop()
         if self.demo is not None:
             self.demo.stop()
         if self.runner is not None:
@@ -153,6 +172,7 @@ class Runtime:
             connection=lambda: self.runner.status() if self.runner else None,
             demo=self.demo,
             demo_marks=self.demo_marks,
+            live=self.live,
         )
 
         def ignored(chat_id: int) -> None:
@@ -188,15 +208,19 @@ class Runtime:
         return result
 
     def kill_switch(self, *, close_positions: bool, source: str) -> dict[str, int]:
-        """ACİL DURDUR: önce kâğıt motoru (modları indirir, Demo'ya iptal isteği bırakır),
-        sonra Demo yürütücüsü (borsadaki bekleyen girişleri iptal eder, istenirse kapatır)."""
+        """ACİL DURDUR: önce kâğıt motoru (modları indirir, yürütücülere iptal isteği
+        bırakır), sonra canlı ve Demo yürütücüleri (borsadaki bekleyen girişleri iptal
+        eder, istenirse korumalı satışla kapatır)."""
         events = self.engine.kill_switch(close_positions=close_positions, marks=self.marks(),
                                          source=source, now=utc_now())
+        live_closing = 0
+        if self.live is not None:
+            live_closing = self.live.kill_switch(close_positions=close_positions, source=source)
         demo_closing = 0
         if self.demo is not None:
             demo_closing = self.demo.kill_switch(close_positions=close_positions, source=source)
         return {"iptal_edilen": len(events.iptal), "kapatilan": len(events.kapanan),
-                "demo_kapatilan": demo_closing}
+                "demo_kapatilan": demo_closing, "canli_kapatilan": live_closing}
 
     def telegram_status(self) -> dict[str, Any]:
         if self.telegram is None:

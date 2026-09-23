@@ -43,6 +43,7 @@ albsat-arayuz = "albsat.cli.serve:main"
 albsat-telegram = "albsat.cli.telegram:main"
 albsat-anahtar = "albsat.cli.anahtar:main"
 albsat-demo = "albsat.cli.demo:main"
+albsat-canli = "albsat.cli.canli:main"
 
 [build-system]
 requires = ["hatchling"]

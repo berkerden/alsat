@@ -1,4 +1,8 @@
-"""Demo Mode emir ve pozisyon kayıtları (SQLite, ``albsat.sqlite3``).
+"""Demo Mode ve canlı hesap emir ve pozisyon kayıtları (SQLite, ``albsat.sqlite3``).
+
+Faz 6'dan beri aynı sınıf iki hesabı ayrı tablolarda tutar: ``demo_*``
+(Demo Mode, sahte para) ve ``canli_*`` (canlı hesap, gerçek para). Aşağıdaki
+tablo adları Demo içindir; canlıda önek ``canli_``.
 
 Kâğıt işlemde bir emrin bütün hayatı tek satırdı. Gerçek borsada öyle
 değil: bir pozisyon birkaç emirden (giriş, hedef, stop, yeniden kurulan
@@ -205,6 +209,12 @@ CREATE TABLE IF NOT EXISTS demo_durum (
     deger     TEXT NOT NULL
 );
 """
+
+
+#: Tablo önekleri: Demo Mode (Faz 5) ve canlı hesap (Faz 6).
+DEMO_TABLES = "demo_"
+LIVE_TABLES = "canli_"
+TABLE_PREFIXES = (DEMO_TABLES, LIVE_TABLES)
 
 
 def _dec(value: str | None) -> Decimal:
@@ -447,26 +457,33 @@ def net_result(econ: Economics, *, exit_price: Decimal | None) -> tuple[Decimal,
 
 
 class DemoLedger:
-    def __init__(self, path: Path | str) -> None:
+    """Bir hesabın (Demo ya da canlı) emir kayıtları. ``prefix`` tablo adlarının
+    önekidir: ``demo_`` (Faz 5) ya da ``canli_`` (Faz 6). İki hesabın kayıtları
+    aynı veritabanı dosyasında ama ayrı tablolardadır; hiç karışmaz."""
+
+    def __init__(self, path: Path | str, *, prefix: str = DEMO_TABLES) -> None:
+        if prefix not in TABLE_PREFIXES:
+            raise ValueError(f"Bilinmeyen tablo öneki: {prefix}")
         self.path = Path(path)
-        db.ensure_schema(self.path, _SCHEMA)
+        self.p = prefix
+        db.ensure_schema(self.path, _SCHEMA.replace("demo_", prefix))
 
     @classmethod
-    def in_directory(cls, root: Path | str) -> DemoLedger:
-        return cls(db.path_in(root))
+    def in_directory(cls, root: Path | str, *, prefix: str = DEMO_TABLES) -> DemoLedger:
+        return cls(db.path_in(root), prefix=prefix)
 
     # --- hesap dönemi ------------------------------------------------------
 
     def current_period(self, *, default_start_usdt: Decimal) -> tuple[int, Decimal, str]:
         with db.session(self.path) as connection:
             row = connection.execute(
-                "SELECT * FROM demo_hesap_donemleri WHERE bitis_utc IS NULL "
+                f"SELECT * FROM {self.p}hesap_donemleri WHERE bitis_utc IS NULL "
                 "ORDER BY id DESC LIMIT 1"
             ).fetchone()
             if row is None:
                 now = iso(utc_now())
                 cursor = connection.execute(
-                    "INSERT INTO demo_hesap_donemleri (baslangic_utc, baslangic_usdt) "
+                    f"INSERT INTO {self.p}hesap_donemleri (baslangic_utc, baslangic_usdt) "
                     "VALUES (?, ?)", (now, str(default_start_usdt)),
                 )
                 return int(cursor.lastrowid or 0), default_start_usdt, now
@@ -475,11 +492,12 @@ class DemoLedger:
     def reset_period(self, *, start_usdt: Decimal, now: datetime) -> int:
         with db.session(self.path) as connection:
             connection.execute(
-                "UPDATE demo_hesap_donemleri SET bitis_utc = ? WHERE bitis_utc IS NULL",
+                f"UPDATE {self.p}hesap_donemleri SET bitis_utc = ? WHERE bitis_utc IS NULL",
                 (iso(now),),
             )
             cursor = connection.execute(
-                "INSERT INTO demo_hesap_donemleri (baslangic_utc, baslangic_usdt) VALUES (?, ?)",
+                f"INSERT INTO {self.p}hesap_donemleri (baslangic_utc, baslangic_usdt) "
+                "VALUES (?, ?)",
                 (iso(now), str(start_usdt)),
             )
             return int(cursor.lastrowid or 0)
@@ -492,7 +510,7 @@ class DemoLedger:
         now = iso(utc_now())
         with db.session(self.path) as connection:
             cursor = connection.execute(
-                f"INSERT INTO demo_pozisyonlar ({','.join(columns)}) "
+                f"INSERT INTO {self.p}pozisyonlar ({','.join(columns)}) "
                 f"VALUES ({','.join('?' for _ in columns)})",
                 tuple(values[key] for key in columns),
             )
@@ -508,7 +526,8 @@ class DemoLedger:
         if columns:
             with db.session(self.path) as connection:
                 connection.execute(
-                    f"UPDATE demo_pozisyonlar SET {', '.join(f'{key} = ?' for key in columns)} "
+                    f"UPDATE {self.p}pozisyonlar "
+                    f"SET {', '.join(f'{key} = ?' for key in columns)} "
                     "WHERE id = ?",
                     (*[changes[key] for key in columns], int(position_id)),
                 )
@@ -526,7 +545,7 @@ class DemoLedger:
 
     def _positions(self, where: str = "", params: tuple[Any, ...] = (), *,
                    order: str = "id", limit: int | None = None) -> tuple[DemoPosition, ...]:
-        query = "SELECT * FROM demo_pozisyonlar"
+        query = f"SELECT * FROM {self.p}pozisyonlar"
         if where:
             query += f" WHERE {where}"
         query += f" ORDER BY {order}"
@@ -555,13 +574,13 @@ class DemoLedger:
 
     # --- emirler -------------------------------------------------------------
 
-    @staticmethod
-    def _insert_leg(connection: Any, position_id: int, leg: dict[str, Any], now: str) -> None:
+    def _insert_leg(self, connection: Any, position_id: int, leg: dict[str, Any],
+                    now: str) -> None:
         values = {**leg, "pozisyon_id": position_id, "olusturma_utc": now,
                   "guncelleme_utc": now}
         columns = [key for key in values if key in _LEG_COLUMNS and key != "id"]
         connection.execute(
-            f"INSERT INTO demo_emirler ({','.join(columns)}) "
+            f"INSERT INTO {self.p}emirler ({','.join(columns)}) "
             f"VALUES ({','.join('?' for _ in columns)})",
             tuple(values[key] for key in columns),
         )
@@ -578,7 +597,7 @@ class DemoLedger:
             values = [changes[key] for key in columns]
             with db.session(self.path) as connection:
                 connection.execute(
-                    f"UPDATE demo_emirler SET {', '.join(f'{key} = ?' for key in columns)}, "
+                    f"UPDATE {self.p}emirler SET {', '.join(f'{key} = ?' for key in columns)}, "
                     "guncelleme_utc = ? WHERE istemci_kimligi = ?",
                     (*values, iso(utc_now()), client_id),
                 )
@@ -587,14 +606,14 @@ class DemoLedger:
     def leg(self, client_id: str) -> DemoLeg | None:
         with db.session(self.path) as connection:
             row = connection.execute(
-                "SELECT * FROM demo_emirler WHERE istemci_kimligi = ?", (client_id,)
+                f"SELECT * FROM {self.p}emirler WHERE istemci_kimligi = ?", (client_id,)
             ).fetchone()
         return DemoLeg(**dict(row)) if row is not None else None
 
     def legs(self, position_id: int) -> tuple[DemoLeg, ...]:
         with db.session(self.path) as connection:
             rows = connection.execute(
-                "SELECT * FROM demo_emirler WHERE pozisyon_id = ? ORDER BY id",
+                f"SELECT * FROM {self.p}emirler WHERE pozisyon_id = ? ORDER BY id",
                 (int(position_id),),
             ).fetchall()
         return tuple(DemoLeg(**dict(row)) for row in rows)
@@ -604,7 +623,7 @@ class DemoLedger:
         placeholders = ",".join("?" for _ in LEG_FINAL)
         with db.session(self.path) as connection:
             rows = connection.execute(
-                f"SELECT * FROM demo_emirler WHERE durum NOT IN ({placeholders}) ORDER BY id",
+                f"SELECT * FROM {self.p}emirler WHERE durum NOT IN ({placeholders}) ORDER BY id",
                 tuple(LEG_FINAL),
             ).fetchall()
         return tuple(DemoLeg(**dict(row)) for row in rows)
@@ -616,7 +635,7 @@ class DemoLedger:
         columns = [key for key in values if key in _FILL_COLUMNS and key != "id"]
         with db.session(self.path) as connection:
             cursor = connection.execute(
-                f"INSERT OR IGNORE INTO demo_dolumlar ({','.join(columns)}) "
+                f"INSERT OR IGNORE INTO {self.p}dolumlar ({','.join(columns)}) "
                 f"VALUES ({','.join('?' for _ in columns)})",
                 tuple(values[key] for key in columns),
             )
@@ -625,7 +644,7 @@ class DemoLedger:
     def fills(self, position_id: int) -> tuple[DemoFill, ...]:
         with db.session(self.path) as connection:
             rows = connection.execute(
-                "SELECT * FROM demo_dolumlar WHERE pozisyon_id = ? ORDER BY zaman_ms, id",
+                f"SELECT * FROM {self.p}dolumlar WHERE pozisyon_id = ? ORDER BY zaman_ms, id",
                 (int(position_id),),
             ).fetchall()
         return tuple(DemoFill(**dict(row)) for row in rows)
@@ -633,7 +652,7 @@ class DemoLedger:
     def filled_for_leg(self, client_id: str) -> Decimal:
         with db.session(self.path) as connection:
             rows = connection.execute(
-                "SELECT miktar FROM demo_dolumlar WHERE emir_istemci = ?", (client_id,)
+                f"SELECT miktar FROM {self.p}dolumlar WHERE emir_istemci = ?", (client_id,)
             ).fetchall()
         return sum((Decimal(row["miktar"]) for row in rows), ZERO)
 
@@ -642,14 +661,14 @@ class DemoLedger:
     def get_state(self, key: str, default: str | None = None) -> str | None:
         with db.session(self.path) as connection:
             row = connection.execute(
-                "SELECT deger FROM demo_durum WHERE anahtar = ?", (key,)
+                f"SELECT deger FROM {self.p}durum WHERE anahtar = ?", (key,)
             ).fetchone()
         return row["deger"] if row is not None else default
 
     def set_state(self, key: str, value: str) -> None:
         with db.session(self.path) as connection:
             connection.execute(
-                "INSERT INTO demo_durum (anahtar, deger) VALUES (?, ?) "
+                f"INSERT INTO {self.p}durum (anahtar, deger) VALUES (?, ?) "
                 "ON CONFLICT(anahtar) DO UPDATE SET deger = excluded.deger",
                 (key, value),
             )
@@ -667,7 +686,11 @@ class DemoLedger:
         self.set_state(key, json.dumps(value, ensure_ascii=False))
 
 
+#: Faz 6 adı; iki hesap da aynı sınıfı kullanır.
+ExecutionLedger = DemoLedger
+
 __all__ = [
+    "DEMO_TABLES",
     "EXIT_DUST",
     "EXIT_KILL",
     "EXIT_LABELS_TR",
@@ -682,6 +705,7 @@ __all__ = [
     "LEG_SENDING",
     "LEG_UNKNOWN",
     "LEG_UNRESOLVED",
+    "LIVE_TABLES",
     "POS_CANCELLED",
     "POS_CLOSED",
     "POS_EXITING",

@@ -120,7 +120,7 @@ birkaç saniye içinde kendiliğinden açılır; açılmazsa terminalde yazan ad
 **Arayüzü kapatmak için** o terminal penceresinde `Control` tuşuna basılı
 tutup `C` tuşuna basın. Pencereyi kapatmak da kapatır.
 
-Arayüzde yedi sekme var:
+Arayüzde sekiz sekme var:
 
 | Sekme | Ne gösterir |
 |---|---|
@@ -131,20 +131,25 @@ Arayüzde yedi sekme var:
 | Sinyal günlüğü | Önerilen ile gerçekleşen arasındaki fark |
 | Kâğıt işlem | Parasız hesap, risk sınırları, elle kâğıt emir, sonuçlar, limitler |
 | Demo işlem | Binance Demo Mode hesabı (sahte para): bağlantı, açık pozisyonlar ve borsadaki emirleri, elle Demo emri, sonuçlar |
+| Canlı işlem | Binance canlı hesabınız (**gerçek para**): anahtar izinleri, Yarı Otomatik önerileri, canlıya geçiş kapısı, elle canlı emir, emir tavanı, sonuçlar |
 
 ### Arayüz hakkında bilmeniz gerekenler
 
 - **Yalnızca sizin bilgisayarınızdan erişilebilir.** Adres `127.0.0.1` ile
   başlıyor; bu "bu bilgisayar" demektir. Aynı ağdaki başka bir cihaz açamaz.
-- **Canlı hesabınıza emir göndermez.** Canlı hesaba emir gönderen kod yok.
-  Kâğıt işlemler yalnızca bu bilgisayardaki deftere yazılır. Demo anahtarını
-  kurduysanız Demo işlem sekmesi yalnızca Binance Demo Mode'a (sahte para)
-  emir gönderir.
+- **Kendiliğinden canlı hesabınıza emir göndermez.** Kâğıt işlemler yalnızca
+  bu bilgisayardaki deftere yazılır. Demo anahtarını kurduysanız Demo işlem
+  sekmesi Binance Demo Mode'a (sahte para) emir gönderir. Canlı işlem sekmesi
+  ancak canlı işlem anahtarını kurduysanız ve bir coini coin adını yazarak
+  Yarı Otomatik'e aldıysanız canlı hesabınıza (gerçek para) emir gönderir;
+  her emir için ayrıca onayınızı ister.
 - **Binance'in herkese açık fiyat akışına bağlanır.** Kâğıt işlem canlı fiyatla
   çalışır. Bu akış için hesap ya da anahtar gerekmez.
 - **API anahtarı istemez.** Salt okuma anahtarı (`bash kurulum.sh anahtar`)
   yalnızca komisyonu ölçer; Demo anahtarı (`bash kurulum.sh demo-anahtar`)
-  yalnızca Demo Mode içindir. İkisi de isteğe bağlıdır.
+  yalnızca Demo Mode içindir; canlı işlem anahtarı
+  (`bash kurulum.sh canli-anahtar`) yalnızca Canlı işlem sekmesi içindir.
+  Üçü de isteğe bağlıdır.
 - **Her açılışta "Sadece Öneri" modunda başlar.** Önceki açılışta kâğıt işlemde
   olan coin kendiliğinden kâğıt işleme dönmez; sekmede tekrar açmanız gerekir.
 

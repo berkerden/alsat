@@ -179,9 +179,12 @@ def test_durum_acilista_sadece_oneri_ve_metin_sayilar(client):
     assert veri["hesap"]["baslangic_usdt"] == "100.00"
     assert isinstance(veri["hesap"]["serbest_usdt"], str)
     assert veri["aktif"] == []
-    assert {item["mod"] for item in veri["kilitli_modlar"]} == {
+    assert {item["mod"] for item in veri["canli_modlar"]} == {
         "yari_otomatik", "tam_otomatik"}
-    assert "demo" in {item["mod"] for item in veri["secilebilir_modlar"]}
+    secilebilir = {item["mod"] for item in veri["secilebilir_modlar"]}
+    assert "demo" in secilebilir
+    # Canlı modlar kâğıt sekmesinden seçilmez.
+    assert not secilebilir & {"yari_otomatik", "tam_otomatik"}
     assert veri["ozet"]["kural"]["islem"] == 0 and veri["ozet"]["elle"]["islem"] == 0
     assert veri["maliyet"]["BTCUSDT"] == COSTS.kaynak_tr
     adlar = {item["ad"] for item in veri["risk"]["gostergeler"]}
@@ -206,10 +209,11 @@ def test_mod_degisimi_denetime_ve_bildirime_yazilir(client, runtime):
 
 
 @pytest.mark.parametrize("mod", ["yari_otomatik", "tam_otomatik"])
-def test_kilitli_mod_secilemez(client, runtime, mod):
+def test_canli_mod_kagit_sekmesinden_secilemez(client, runtime, mod):
     yanit = _post(client, "/api/kagit/mod", {"sembol": "BTCUSDT", "mod": mod})
     assert yanit.status_code == 400
-    assert "kilitli" in yanit.json()["detail"]
+    assert "gerçek parayla" in yanit.json()["detail"]
+    assert "Canlı işlem" in yanit.json()["detail"]
     assert runtime.engine.modes.get("BTCUSDT") == MODE_ADVICE
 
 
@@ -444,10 +448,13 @@ def test_arayuz_katmani_imzali_istek_ve_anahtar_koduna_erismez():
     api_dir = STATIC_DIR.parent
     # Telegram jetonu Anahtar Zinciri'nden okunur (runtime.py); Binance anahtarı asla.
     # Faz 5: Demo emirleri yalnızca yürütücüden gider; arayüz imzalı istemciyi
-    # (DemoTrader) ve Demo anahtarını da görmez.
+    # (DemoTrader) ve Demo anahtarını da görmez. Faz 6: canlı istemci (LiveTrader),
+    # canlı anahtar ve izin okuması da yalnızca yürütücüde.
     yasak = ("exchange.signed", "exchange.keys", "albsat-binance", "X-MBX-APIKEY",
              "SignedReader", "load_key", "/api/v3/order", "exchange.trading", "DemoTrader",
-             "KEYCHAIN_SERVICE_DEMO", "place_otoco", "cancel_order")
+             "KEYCHAIN_SERVICE_DEMO", "place_otoco", "cancel_order", "LiveTrader",
+             "KEYCHAIN_SERVICE_LIVE", "apiRestrictions", "verify_permissions",
+             "live_trader", "entry_cap_usdt")
     for path in sorted(api_dir.glob("*.py")):
         text = path.read_text(encoding="utf-8")
         for kelime in yasak:

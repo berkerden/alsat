@@ -57,7 +57,7 @@ from albsat.exchange.market_stream import (
     stream_url,
 )
 from albsat.exchange.ratelimit import BudgetExceeded
-from albsat.modes.state import MODE_DEMO, MODE_OFF, MODE_PAPER
+from albsat.modes.state import LIVE_MODES, MODE_DEMO, MODE_OFF, MODE_PAPER
 from albsat.notify.base import KIND_CONNECTION, KIND_SIGNAL, KIND_SYSTEM, Notifier
 from albsat.paper.engine import OrderMeta, PaperEngine
 from albsat.paper.fills import Candle
@@ -162,6 +162,7 @@ class LiveRunner:
         #: Faz 5: Demo yürütücüsü (``execution.executor.DemoExecutor``); çalışma
         #: zamanı kurar. Coin Demo Mode'dayken sinyal ona gider.
         self.demo: Any = None
+        self.live: Any = None
         names = stream_names(self.symbols, ("1m", *self.periods), extra_tickers=(USDTTRY,))
         factory = stream_factory or MarketStream
         self.stream = factory(
@@ -465,7 +466,7 @@ class LiveRunner:
         if mono - self._last_guard >= SLEEP_GUARD_SECONDS:
             self._last_guard = mono
             self.sleep_guard.want(bool(self.engine.modes.trading_symbols())
-                                  or self._demo_positions_open())
+                                  or self._exchange_positions_open())
 
         if mono - self._last_heartbeat >= HEARTBEAT_SECONDS:
             self._write_heartbeat()
@@ -473,14 +474,21 @@ class LiveRunner:
             if self.info_store.read() is not None:
                 self._refresh_filters(force=False)
 
+    def _exchange_positions_open(self) -> bool:
+        """Borsada Demo ya da canlı emir/pozisyon varken Mac uyumasın (koruma izlenir)."""
+        for executor in (self.demo, self.live):
+            if executor is None:
+                continue
+            try:
+                if executor.ledger.active():
+                    return True
+            except Exception:  # noqa: BLE001 - uyku kararı bir okuma hatasıyla düşmesin
+                return True
+        return False
+
     def _demo_positions_open(self) -> bool:
-        """Borsada Demo emri/pozisyonu varken Mac uyumasın (koruma izlenir)."""
-        if self.demo is None:
-            return False
-        try:
-            return bool(self.demo.ledger.active())
-        except Exception:  # noqa: BLE001 - uyku kararı bir okuma hatasıyla düşmesin
-            return True
+        """Faz 5 adı."""
+        return self._exchange_positions_open()
 
     def _on_wake(self, seconds: float) -> None:
         self.health.uyku_sayisi += 1
@@ -545,7 +553,9 @@ class LiveRunner:
 
     def evaluate_signals(self, sembol: str, periyot: str) -> list[SignalCard]:
         """Son kapanmış mumda kurallar tetiklendi mi? Yeni AL sinyali için
-        bildirim; coin Kâğıt İşlem modundaysa kâğıt emir, Demo Mode'daysa Demo emri."""
+        bildirim; coin Kâğıt İşlem modundaysa kâğıt emir, Demo Mode'daysa Demo emri,
+        Yarı Otomatik'te onay bekleyen canlı öneri, Tam Otomatik'te (kural canlıya
+        geçiş kapısını geçtiyse) canlı emir."""
         mode = self.engine.modes.get(sembol)
         if mode == MODE_OFF:
             return []
@@ -583,6 +593,14 @@ class LiveRunner:
                     self.health.note(f"{card.sembol} Demo emri açılamadı: {error}")
                     self.notifier.send(f"❌ {card.sembol} sinyali için Demo emri açılamadı: "
                                        f"{type(error).__name__}", kind=KIND_SIGNAL)
+            elif mode in LIVE_MODES and card.kural_kimligi in rules and self.live is not None:
+                try:
+                    self.live.place_from_card(card, rules[card.kural_kimligi])
+                except Exception as error:  # noqa: BLE001 - döngü sürsün, kullanıcı bilsin
+                    logger.exception("Canlı emir/öneri açılamadı")
+                    self.health.note(f"{card.sembol} canlı emir/öneri açılamadı: {error}")
+                    self.notifier.send(f"❌ {card.sembol} sinyali için canlı emir/öneri "
+                                       f"açılamadı: {type(error).__name__}", kind=KIND_SIGNAL)
         return fresh
 
     def place_from_card(self, card: SignalCard, rule: Rule) -> None:

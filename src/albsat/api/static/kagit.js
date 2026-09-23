@@ -160,7 +160,8 @@
       "Uygulama her açılışta bütün coinleri Sadece Öneri'ye alır. Kâğıt İşlem modunda, " +
       "kabul edilmiş bir kural sinyal verince kâğıt emir kendiliğinden açılır; elle " +
       "kâğıt emir de yalnızca bu modda açılır. Demo Mode'da aynı sinyal Binance Demo " +
-      "hesabına (sahte para) gerçek emir olarak gider; ayrıntısı Demo işlem sekmesinde."));
+      "hesabına (sahte para) gerçek emir olarak gider; ayrıntısı Demo işlem sekmesinde. " +
+      "Yarı ve Tam Otomatik gerçek parayla işlem yapar; yalnızca Canlı işlem sekmesinden açılır."));
     const kap = el("div", "mod-satirlar");
     v.modlar.forEach(function (m) {
       const satir = el("label", "mod-satir");
@@ -179,8 +180,8 @@
         }
         sec.appendChild(o);
       });
-      v.kilitli.forEach(function (s) {
-        const o = new Option(s.etiket + " — kilitli: " + s.ne_zaman, s.mod);
+      v.canli_modlar.forEach(function (s) {
+        const o = new Option(s.etiket + " — " + s.aciklama, s.mod);
         o.disabled = true;
         sec.appendChild(o);
       });
@@ -685,7 +686,7 @@
       cizDegistiyse("kagit-baglanti", { canli: p.canli, baglanti: p.baglanti, telegram: d.telegram },
         baglantiCiz);
       cizDegistiyse("kagit-modlar", {
-        modlar: d.modlar, secilebilir: d.secilebilir_modlar, kilitli: d.kilitli_modlar,
+        modlar: d.modlar, secilebilir: d.secilebilir_modlar, canli_modlar: d.canli_modlar,
         canli: d.canli, demo_hazir_degil: d.demo_hazir_degil,
       }, modlarCiz);
       cizDegistiyse("kagit-hesap", d.hesap, hesapCiz);

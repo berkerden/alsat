@@ -107,6 +107,7 @@ def plan_otoco(
     fee_rate: Decimal,
     carried_dust: Decimal,
     settings: ExecutionSettings,
+    scheme: ids.IdScheme = ids.DEMO,
 ) -> Plan:
     problems: list[str] = []
     if not rules.otoco_allowed:
@@ -127,7 +128,7 @@ def plan_otoco(
     stop_problems, limit = _stop_checks(rules, stop=stop, quantity=pending, settings=settings,
                                         label="Stop")
     problems.extend(stop_problems)
-    names = ids.otoco_ids(token, attempt)
+    names = scheme.otoco_ids(token, attempt)
     params: dict[str, str] = {
         "symbol": rules.symbol,
         "listClientOrderId": names["listClientOrderId"],
@@ -169,6 +170,7 @@ def plan_oco(
     stop: Decimal,
     quantity: Decimal,
     settings: ExecutionSettings,
+    scheme: ids.IdScheme = ids.DEMO,
 ) -> Plan:
     """Elde tutulan miktar için hedef + stop (yeniden koruma)."""
     problems: list[str] = []
@@ -182,7 +184,7 @@ def plan_oco(
     stop_problems, limit = _stop_checks(rules, stop=stop, quantity=quantity, settings=settings,
                                         label="Stop")
     problems.extend(stop_problems)
-    names = ids.oco_ids(token, attempt)
+    names = scheme.oco_ids(token, attempt)
     params: dict[str, str] = {
         "symbol": rules.symbol,
         "listClientOrderId": names["listClientOrderId"],
@@ -216,6 +218,7 @@ def plan_exit(
     quantity: Decimal,
     best_bid: Decimal,
     settings: ExecutionSettings,
+    scheme: ids.IdScheme = ids.DEMO,
 ) -> Plan:
     """Korumalı çıkış: en iyi alışın azami kayma kadar altında ``LIMIT IOC`` satış."""
     quantity = rules.round_quantity(quantity)
@@ -223,7 +226,7 @@ def plan_exit(
                         / ONE_HUNDRED)
     problems = _texts(rules.validate_limit_order(side=Side.SELL, price=price,
                                                  quantity=quantity), "Çıkış")
-    client = ids.exit_id(token, attempt)
+    client = scheme.exit_id(token, attempt)
     params = {
         "symbol": rules.symbol,
         "side": "SELL",

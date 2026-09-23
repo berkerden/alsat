@@ -207,7 +207,8 @@ def verify(trader: DemoTrader, root: Path, say: Say = _say) -> int:
 # --- uçtan uca sınama ---------------------------------------------------------------------
 
 
-def probe_plan(rules: SymbolRules, bid: Decimal, fee_rate: Decimal) -> Plan:
+def probe_plan(rules: SymbolRules, bid: Decimal, fee_rate: Decimal, *,
+               scheme: ids.IdScheme = ids.DEMO) -> Plan:
     """Dolmayacak küçük bir OTOCO: giriş en iyi alışın %5 altında, tutar en küçüğün 1,5 katı."""
     entry = rules.round_price(bid * TEST_DISCOUNT, Side.BUY)
     minimum = rules.notional.min_notional if rules.notional is not None else Decimal("5")
@@ -220,6 +221,7 @@ def probe_plan(rules: SymbolRules, bid: Decimal, fee_rate: Decimal) -> Plan:
         rules=rules, token=ids.new_token(), attempt=1, entry=entry,
         target=entry * Decimal("1.02"), stop=entry * Decimal("0.98"), quantity=quantity,
         fee_rate=fee_rate, carried_dust=Decimal("0"), settings=ExecutionSettings(),
+        scheme=scheme,
     )
 
 

@@ -1,6 +1,6 @@
 /* Arayüzün ana dosyası: öneriler, sihirbaz, kütüphane, ek araçlar, günlük.
- * Kâğıt işlem sekmesi kagit.js'te, Demo işlem sekmesi demo.js'te; ortak
- * yardımcılar window.Albsat ile onlara açılır.
+ * Kâğıt işlem sekmesi kagit.js'te, Demo işlem sekmesi demo.js'te, Canlı
+ * işlem sekmesi canli.js'te; ortak yardımcılar window.Albsat ile onlara açılır.
  *
  * Çerçeve yok, derleme adımı yok: sayfa doğrudan Python paketinden
  * sunuluyor. Sunucudan gelen parasal değerler METİNDİR ve öyle gösterilir;
@@ -171,8 +171,9 @@
     setTimeout(function () { d.remove(); }, tur === "kotu" ? 9000 : 6000);
   }
 
-  // Üstteki rozet: hangi coin kâğıt işlemde, hangisi Demo'da? Her açılışta
-  // hepsi Sadece Öneri.
+  // Üstteki rozet: hangi coin kâğıt işlemde, hangisi Demo'da, hangisi canlı
+  // hesapta (gerçek para)? Her açılışta hepsi Sadece Öneri. Canlı mod varsa
+  // rozet en başta ve dolu kırmızı yazılır.
   function modRozeti(modlar) {
     const rozet = document.getElementById("mod-rozeti");
     if (!modlar) { rozet.textContent = durum ? durum.mod_tr : "Sadece Öneri"; return; }
@@ -180,14 +181,20 @@
       return modlar.filter(function (m) { return m.mod === mod; })
         .map(function (m) { return m.sembol; });
     }
+    const tam = secilen("tam_otomatik");
+    const yari = secilen("yari_otomatik");
     const kagit = secilen("kagit");
     const demo = secilen("demo");
+    const canli = tam.length + yari.length > 0;
     const parca = [];
-    if (kagit.length) parca.push("Kâğıt işlem: " + kagit.join(", "));
+    if (tam.length) parca.push("CANLI Tam Otomatik: " + tam.join(", "));
+    if (yari.length) parca.push("CANLI Yarı Otomatik: " + yari.join(", "));
     if (demo.length) parca.push("Demo: " + demo.join(", "));
+    if (kagit.length) parca.push("Kâğıt işlem: " + kagit.join(", "));
     rozet.textContent = parca.length ? parca.join(" · ") : "Sadece Öneri";
-    rozet.classList.toggle("rozet-kagit", kagit.length > 0 && !demo.length);
-    rozet.classList.toggle("rozet-demo", demo.length > 0);
+    rozet.classList.toggle("rozet-kagit", kagit.length > 0 && !demo.length && !canli);
+    rozet.classList.toggle("rozet-demo", demo.length > 0 && !canli);
+    rozet.classList.toggle("rozet-canli", canli);
   }
 
   function hataKutusu(hata) {
@@ -258,10 +265,12 @@
       const sonuc = await gonder("/api/kagit/acil-durdur", { pozisyonlari_kapat: false });
       modRozeti(sonuc.modlar);
       bildir("Acil durdurma çalıştı. Bütün coinler Sadece Öneri modunda; " +
-        sonuc.iptal_edilen + " bekleyen kâğıt emir iptal edildi, Demo'daki bekleyen " +
-        "girişlere iptal gönderildi. Açık pozisyonların stop ve hedefi yerinde.", "iyi");
+        sonuc.iptal_edilen + " bekleyen kâğıt emir iptal edildi, canlı hesaptaki ve " +
+        "Demo'daki bekleyen girişlere iptal gönderildi. Açık pozisyonların stop ve " +
+        "hedefi yerinde.", "iyi");
       if (window.Kagit) window.Kagit.yenile();
       if (window.Demo) window.Demo.yenile();
+      if (window.Canli) window.Canli.yenile();
     } catch (hata) {
       bildir("Acil durdurma çalışmadı: " + hata.message, "kotu");
     } finally {
@@ -294,7 +303,7 @@
     try {
       const s = await getir("/api/saglik");
       document.getElementById("saglik-satiri").textContent =
-        "Canlı hesaba emir gönderilmez · Emir yetkisi: " + s.emir_yetkisi +
+        "Emir yetkisi: " + s.emir_yetkisi +
         " · Canlı fiyat " + (durum && durum.canli ? "açık" : "kapalı") +
         (SAYFA_SURUMU ? " · Arayüz sürümü " + SAYFA_SURUMU : "");
       altBoslugu();
@@ -331,6 +340,7 @@
     const hangi = sekme || etkinSekme();
     if (window.Kagit) window.Kagit.etkin(hangi === "kagit");
     if (window.Demo) window.Demo.etkin(hangi === "demo");
+    if (window.Canli) window.Canli.etkin(hangi === "canli");
     if (hangi === "oneriler") { onerileriYukle(); grafikYukle(); }
     if (hangi === "sihirbaz") sihirbazYukle();
     if (hangi === "kutuphane") kutuphaneYukle();

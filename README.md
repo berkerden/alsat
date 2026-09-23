@@ -16,6 +16,7 @@ Fizibilite sonucu: [`docs/FAZ1-FIZIBILITE.md`](docs/FAZ1-FIZIBILITE.md)
 Öneri motoru ve arayüzün yöntemi: [`docs/FAZ3-ONERI-MOTORU.md`](docs/FAZ3-ONERI-MOTORU.md)
 Risk motoru, kâğıt işlem ve Telegram: [`docs/FAZ4-RISK-KAGIT-TELEGRAM.md`](docs/FAZ4-RISK-KAGIT-TELEGRAM.md)
 Demo Mode'da emir yürütme: [`docs/FAZ5-DEMO-EMIR-YURUTME.md`](docs/FAZ5-DEMO-EMIR-YURUTME.md)
+Canlı işlem ve canlıya geçiş kapısı: [`docs/FAZ6-CANLI.md`](docs/FAZ6-CANLI.md)
 Fazlar arası devir notu: [`docs/DEVIR-NOTU.md`](docs/DEVIR-NOTU.md)
 
 ---
@@ -30,7 +31,7 @@ Fazlar arası devir notu: [`docs/DEVIR-NOTU.md`](docs/DEVIR-NOTU.md)
 | 3 | Periyot sihirbazı + öneri motoru + arayüz | ✅ Onaylandı |
 | 4 | Risk motoru + kâğıt işlem + Telegram | ✅ Onaylandı |
 | 5 | Emir yürütme (**Demo Mode**) | ✅ Onaylandı |
-| 6 | Canlı yarı otomatik → tam otomatik | ⏳ |
+| 6 | Canlı yarı otomatik → tam otomatik | 🔶 Yazıldı; Mac'te gerçek hesap sınaması ve onay bekliyor |
 | 7 | VPS dağıtımı | ⏳ |
 
 Her fazın sonunda çalışma durur ve onay beklenir (SPEC.md §10).
@@ -64,8 +65,9 @@ Her fazın sonunda çalışma durur ve onay beklenir (SPEC.md §10).
 - **Sinyal günlüğü:** önerilen ile gerçekleşen arasındaki fark
 - **Ek araçlar:** izleme, maliyet/risk hesabı, disiplinli alım planı
 - **Yerel arayüz** (`albsat-arayuz`): yalnızca 127.0.0.1, her açılışta Sadece
-  Öneri modu, canlı hesaba emir göndermez; Demo anahtarı kuruluysa yalnızca
-  Binance Demo Mode'a (sahte para) emir gönderir
+  Öneri modu; Demo anahtarı kuruluysa Binance Demo Mode'a (sahte para), canlı
+  işlem anahtarı kuruluysa ve bir coini siz Yarı Otomatik'e alırsanız canlı
+  hesaba (gerçek para) emir gönderir
 - **Risk motoru:** §4.6'daki bütün limitler ve piyasa koşulu filtreleri; her
   kapı gerekçesiyle, limitler arayüzden ayarlanır, sınır aşılınca otomatik
   işlem kapanır
@@ -81,6 +83,11 @@ Her fazın sonunda çalışma durur ve onay beklenir (SPEC.md §10).
 - **Komisyon ölçümü** (`bash kurulum.sh anahtar`): salt okuma Ed25519 anahtarı,
   para çekme izni açıksa ret
 - **Denetim kaydı:** mod, limit ve emir değişiklikleri, sırsız
+- **Demo Mode'da emir yürütme:** OTOCO giriş, borsada bekleyen stop ve hedef,
+  kısmi dolum, kaybolan yanıt, uzlaştırma (Faz 5)
+- **Canlı işlem (Faz 6):** Yarı Otomatik (her emir onayla, arayüzden ya da
+  Telegram `/onayla`), emir tavanı, anahtar izni denetimi, canlıya geçiş
+  kapısı; Tam Otomatik kapıyı geçen kural olmadan açılmaz
 
 Faz 2'nin ölçüm sonucu: bu kapsamda (BTCUSDT + SOLUSDT, 15m + 1h, 2-4 mumluk
 pencereler) çoklu test düzeltmesinden geçen örüntü yok; maliyet tamamen
@@ -191,13 +198,16 @@ python -m albsat.cli.serve
 ```
 
 Sunucu **yalnızca 127.0.0.1**'e bağlanır (SPEC §5) ve tarayıcıyı kendiliğinden
-açar. Binance'in herkese açık fiyat akışına bağlanır ve canlı hesaba **emir
-göndermez**; Demo anahtarı kuruluysa Demo işlem sekmesi yalnızca Binance Demo
-Mode'a (sahte para) emir gönderir. Uygulama her açılışta "Sadece Öneri" modundadır.
-`--cevrimdisi` ile açılırsa internete hiç çıkmaz (kâğıt işlem o zaman çalışmaz).
+açar. Binance'in herkese açık fiyat akışına bağlanır. Uygulama her açılışta
+"Sadece Öneri" modundadır ve kendiliğinden hiçbir hesaba emir göndermez. Demo
+anahtarı kuruluysa Demo işlem sekmesi Binance Demo Mode'a (sahte para), canlı
+işlem anahtarı kuruluysa Canlı işlem sekmesi canlı hesaba (gerçek para) emir
+gönderebilir; ikisi de siz o coini ilgili moda aldıktan sonra.
+`--cevrimdisi` ile açılırsa internete hiç çıkmaz (kâğıt, Demo ve canlı işlem
+o zaman çalışmaz).
 
-Yedi sekme: Öneriler, Periyot sihirbazı, Örüntü kütüphanesi, Ek araçlar,
-Sinyal günlüğü, Kâğıt işlem, Demo işlem.
+Sekiz sekme: Öneriler, Periyot sihirbazı, Örüntü kütüphanesi, Ek araçlar,
+Sinyal günlüğü, Kâğıt işlem, Demo işlem, Canlı işlem.
 
 Kabul edilmiş kural olmadığı için Öneriler sekmesi **"önerilecek kural yok"**
 diyor ve nedenini sayılarla yazıyor: kaç aday denendi, kabul eşiği neydi, en
@@ -271,6 +281,42 @@ Yöntemin ayrıntısı: [`docs/FAZ5-DEMO-EMIR-YURUTME.md`](docs/FAZ5-DEMO-EMIR-Y
 
 ---
 
+## Canlı işlem (Faz 6)
+
+Arayüzün **Canlı işlem** sekmesi emirleri **gerçek Binance hesabınıza**
+gönderir: para gerçektir. Sekme kırmızı bir "GERÇEK PARA" şeridiyle açılır;
+canlı moddaki coin üstteki rozette kırmızı yazılır.
+
+- **Yarı Otomatik:** kabul edilmiş bir kural sinyal verince emir gitmez,
+  öneri olarak sekmeye ve Telegram'a düşer. "Emri Gönder" (ya da Telegram'da
+  `/onayla <kimlik>`) demeden emir gitmez. Elle canlı emir de yalnızca bu
+  moddaki coinde açılır.
+- **Tam Otomatik:** yalnızca **canlıya geçiş kapısını** geçen kuralların
+  sinyali onaysız emre dönüşür. Kapı: kural kabul edilmiş, kâğıtta en az 7 gün
+  ve 30 kural işlemi, sonuç beklentiyle uyumlu ve ortalaması pozitif. Kapıyı
+  elle aşan bir yol yoktur. Kabul edilmiş kural olmadığı için Tam Otomatik
+  bugün açılamaz.
+- İki mod da açılırken coin adının yazılmasını ister ve yalnızca bu sekmeden
+  açılır.
+- **Emir tavanı:** her canlı giriş en fazla 10 USDT (sekmeden değiştirilir,
+  bot bütçesini aşamaz).
+- Anahtarın izinleri 30 dakikada bir okunur. Para çekme ya da Spot dışı bir
+  izin açılırsa canlı modlar kapanır ve bekleyen girişler iptal edilir.
+  Borsadaki stop ve hedef yerinde kalır.
+- ACİL DURDUR ve Telegram `/durdur` canlı modları da kapatır.
+
+Bir kez canlı işlem anahtarı kurulur (bkz. "Canlı işlem anahtarı"), sonra
+dolmayacak bir sınama emriyle uçtan uca sınanır:
+
+```bash
+bash kurulum.sh canli-anahtar
+bash kurulum.sh canli-sina
+```
+
+Yöntemin ayrıntısı: [`docs/FAZ6-CANLI.md`](docs/FAZ6-CANLI.md)
+
+---
+
 ## API anahtarı
 
 Faz 4'te anahtar yalnızca bir iş için gerekir: hesabınıza özel **komisyon
@@ -295,14 +341,51 @@ bash kurulum.sh anahtar
 
 Oranları sonradan yeniden ölçmek için `bash kurulum.sh komisyon`.
 
-Emir gönderen anahtar yalnızca **Demo Mode** içindir ve ayrı kurulur
-(`bash kurulum.sh demo-anahtar`, Anahtar Zinciri'nde `albsat-binance-demo`
-kaydı). Binance Demo'nun API yönetiminde oluşturulur; Demo'da izinler
-değiştirilemiyor ve para çekme yok. Canlı hesap için emir anahtarı Faz 6'ya
-kadar oluşturulmaz. VPS'te statik IP kısıtlaması zorunludur; Mac'te ev IP'si
-değişebildiği için bütçe sınırını yazılım uygular.
+Emir gönderen iki anahtar daha vardır; ikisi de ayrı kurulur ve bu salt okuma
+anahtarının yerine kullanılamaz:
+
+- **Demo Mode anahtarı** (`bash kurulum.sh demo-anahtar`, Anahtar Zinciri'nde
+  `albsat-binance-demo` kaydı). Binance Demo'nun API yönetiminde oluşturulur;
+  Demo'da izinler değiştirilemiyor ve para çekme yok.
+- **Canlı işlem anahtarı** (`bash kurulum.sh canli-anahtar`,
+  `albsat-binance-canli` kaydı). Aşağıda.
 
 Anahtarı hiç kimseyle, bu proje üzerinde çalışan hiçbir araçla paylaşmayın.
+
+### Canlı işlem anahtarı
+
+Bu anahtar **gerçek parayla işlem yapabilir**. Kurulum salt okuma anahtarıyla
+aynıdır (anahtar çifti Mac'te üretilir, Binance'e yalnızca genel yarı
+verilir, API Key gizli girişle yazılır), yalnızca izinler farklıdır:
+
+- **Açık:** Okuma (Enable Reading) ve Spot ve Margin işlemleri (Enable Spot &
+  Margin Trading).
+- **Kapalı:** Para çekme (Withdrawals), Margin (borç, geri ödeme, transfer),
+  Vadeli işlem, Opsiyon, Portföy margin ve bütün transfer izinleri.
+
+Uygulama izinleri `apiRestrictions` ile okur. Kapalı olması gereken bir izin
+açıksa bu anahtarla emir göndermez. Hesabın `canWithdraw` bayrağı anahtarın
+izni değildir; ona bakılmaz.
+
+**IP kısıtlaması.** Binance işlem izinli anahtarlarda güvenilir IP listesi
+öneriyor. Mac'te iki seçenek var:
+
+- **Kısıtlı (ev IP'niz listede):** Anahtar başka bir IP'den kullanılamaz. Ama
+  internet sağlayıcınız IP'nizi değiştirirse anahtar çalışmayı bırakır: yeni
+  emir gönderilemez, uzlaştırma yapılamaz. Borsadaki stop ve hedef yine
+  çalışır; Binance'te IP listesini güncellemeniz gerekir.
+- **Kısıtsız:** Anahtar her IP'den kullanılabilir. Özel yarı yalnızca bu
+  Mac'in Anahtar Zinciri'nde durduğu için anahtarı kullanmak yine Mac'e
+  erişmeyi gerektirir, ama bir koruma katmanı eksilir.
+
+Binance'in kısıtsız anahtarlarla ilgili kuralı zamanla değişti. 26 Temmuz 2021
+duyurusu kısıtsız anahtarlarda Spot işlem izninin 90 günde bir kapandığını
+söylüyordu. Binance 24 Ekim 2023'te bu kuralın artık geçerli olmadığını
+duyuruya ekledi. **Güncel kural, anahtarı oluştururken Binance'in sayfasında
+yazandır; oradaki uyarıyı okuyun.** Binance işlem iznini kapatırsa uygulama
+bunu en geç 30 dakika içinde görür, canlı girişleri durdurur ve haber verir.
+
+VPS'e geçişte (Faz 7) IP kısıtlaması zorunludur.
 
 ---
 
@@ -322,7 +405,7 @@ src/albsat/
   core/        Decimal aritmetiği, filtreler, komisyon, maliyet, denetim kaydı,
                SQLite, saat, Anahtar Zinciri, uyku engeli
   exchange/    uç noktalar, HTTP, istek bütçesi, WebSocket piyasa akışı,
-               imzalı salt okuma istekleri, Demo Mode emir istemcisi ve
+               imzalı salt okuma istekleri, Demo ve canlı emir istemcileri,
                hesap akışı
   data/        arşiv indirme, REST boşluk doldurma, Parquet saklama, kalite,
                canlı piyasa ölçümleri, ölçülen komisyon
@@ -332,8 +415,8 @@ src/albsat/
   risk/        risk limitleri, işlem öncesi/sonrası kapılar, piyasa koşulları,
                pozisyon büyüklüğü (bütçe/risk sınırı, stepSize kaybı)
   paper/       kâğıt işlem: dolum kuralları, defter, motor, canlı döngü, rapor
-  execution/   Demo Mode emir yürütücüsü: planlayıcı, kimlikler, defter,
-               uzlaştırma, hata sınıflandırma, ayarlar
+  execution/   Demo ve canlı emir yürütücüsü: planlayıcı, kimlikler, defter,
+               uzlaştırma, hata sınıflandırma, ayarlar, canlıya geçiş kapısı
   modes/       coin başına çalışma modu
   notify/      bildirimler, Telegram, komutlar
   strategy/    kural deposu, öneri kartı, öneri motoru, sihirbaz, günlük,

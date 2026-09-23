@@ -7,7 +7,9 @@ Faz 3 uçları (öneriler, kütüphane, sihirbaz, ek araçlar) diskten okur ve
 yan etkisizdir. Faz 4 ile gelen kâğıt işlem uçları ``paper_api`` dosyasında
 ve ``/api/kagit/`` altındadır; yalnızca **kâğıt hesabı** değiştirirler.
 Faz 5'in Demo Mode uçları ``demo_api`` dosyasında ve ``/api/demo/``
-altındadır; emirleri Demo yürütücüsü (``execution.executor``) gönderir. Bu
+altındadır; emirleri Demo yürütücüsü (``execution.executor``) gönderir.
+Faz 6'nın canlı işlem uçları ``live_api`` dosyasında ve ``/api/canli/``
+altındadır; emirleri canlı yürütücü (``execution.live``) gönderir. Bu
 katmanda imzalı istemciye ya da API anahtarına erişen kod yoktur.
 
 **Yerel koruma.** Sunucu yalnızca bu Mac'ten erişilebilir olsa da tarayıcıda
@@ -36,7 +38,7 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from albsat.api import demo_api, paper_api, serialize
+from albsat.api import demo_api, live_api, paper_api, serialize
 from albsat.core.filters import SymbolRules
 from albsat.data.exchangeinfo import ExchangeInfoStore
 from albsat.data.klines import closed_only, interval_ms, to_utc
@@ -183,6 +185,28 @@ NO_RULESET_MESSAGE = (
 )
 
 
+def _order_authority(runtime: Runtime | None) -> str:
+    """Sağlık panelindeki "emir yetkisi" satırı: hangi hesaba emir gidebilir?"""
+    demo = runtime is not None and runtime.demo is not None and runtime.demo.trader is not None
+    live = runtime is not None and runtime.live is not None and runtime.live.trader is not None
+    if live:
+        return ("CANLI hesap (gerçek para; yalnızca Yarı/Tam Otomatik coinler, emir başına "
+                "tavanla)" + (" ve Binance Demo Mode (sahte para)" if demo else ""))
+    if demo:
+        return "yalnızca Binance Demo Mode (sahte para); canlı işlem anahtarı kurulu değil"
+    return "yok — Demo ve canlı anahtar kurulu değil; kâğıt emirler yalnızca yerel defterde"
+
+
+def _keys_in_use(runtime: Runtime | None) -> str:
+    parts = []
+    if runtime is not None and runtime.live is not None and runtime.live.trader is not None:
+        parts.append("canlı işlem anahtarı (Anahtar Zinciri'nde; para çekme izni kapalı "
+                     "okunmadan emir gitmez)")
+    if runtime is not None and runtime.demo is not None and runtime.demo.trader is not None:
+        parts.append("Demo Mode anahtarı (Anahtar Zinciri'nde; Demo'da para çekme yok)")
+    return "; ".join(parts) or "kullanılmıyor"
+
+
 def _require_interval(periyot: str) -> str:
     """Tanınmayan periyodu 400 ile reddeder.
 
@@ -248,6 +272,7 @@ def create_app(state: AppState) -> FastAPI:
 
     paper_api.register(app, lambda: state.runtime)
     demo_api.register(app, lambda: state.runtime)
+    live_api.register(app, lambda: state.runtime)
 
     # --- durum ---------------------------------------------------------
 
@@ -506,23 +531,17 @@ def create_app(state: AppState) -> FastAPI:
         """Sistem sağlığı paneli (SPEC §8.9). Canlı bağlantı: ``/api/kagit/piyasa``."""
         runtime = state.runtime
         live = runtime is not None and runtime.runner is not None
+        live_orders = (runtime is not None and runtime.live is not None
+                       and runtime.live.trader is not None)
         return {
             "mod": MODE_TR,
             "internet_kullanimi": (
                 "Binance genel piyasa verisi (WebSocket, kopunca REST) — hesap bilgisi yok"
                 if live else "yok — sunucu diskten okur"
             ),
-            "emir_yetkisi": (
-                "yalnızca Binance Demo Mode (sahte para); canlı hesaba emir gönderen kod yok"
-                if runtime is not None and runtime.demo is not None
-                and runtime.demo.trader is not None
-                else "yok — Demo anahtarı kurulu değil; kâğıt emirler yalnızca yerel defterde"
-            ),
-            "api_anahtari": (
-                "Demo Mode anahtarı (Anahtar Zinciri'nde; Demo'da para çekme yok)"
-                if runtime is not None and runtime.demo is not None
-                and runtime.demo.trader is not None else "kullanılmıyor"
-            ),
+            "emir_yetkisi": _order_authority(runtime),
+            "canli_emir": live_orders,
+            "api_anahtari": _keys_in_use(runtime),
             "veri_dizini": str(state.veri_dizini.resolve()),
             "kural_deposu_var": state.kural_dosyasi.exists(),
             "filtre_onbellegi_var": ExchangeInfoStore(state.veri_dizini).exists(),

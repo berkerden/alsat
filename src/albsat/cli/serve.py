@@ -16,7 +16,11 @@ internete hiç çıkmaz; o zaman kâğıt işlem de çalışmaz.
 
 Faz 5'ten beri Demo Mode anahtarı (``bash kurulum.sh demo-anahtar``)
 kuruluysa Demo işlem sekmesi Binance **Demo Mode**'a (sahte para) emir
-gönderir. Canlı hesaba emir gönderen kod yoktur.
+gönderir. Faz 6'dan beri canlı işlem anahtarı (``bash kurulum.sh
+canli-anahtar``) kuruluysa Canlı işlem sekmesi Binance **canlı hesaba
+(gerçek para)** emir gönderebilir; yalnızca Yarı/Tam Otomatik'e elle alınmış
+coinler için, emir başına tavanla ve anahtarın para çekme izni kapalı
+okunduktan sonra.
 
 Her açılışta bütün coinler "Sadece Öneri" modunda başlar (SPEC §2).
 """
@@ -152,9 +156,10 @@ def main(argv: list[str] | None = None) -> int:
 
     port = _free_port(int(args.port))
     address = f"http://{HOST}:{port}/"
-    print(f"  Mod            : bütün coinler {MODE_TR} (canlı hesaba emir gönderilmez)",
-          flush=True)
-    for mode, label in (("kagit", "Kâğıt İşlem"), ("demo", "Demo Mode")):
+    print(f"  Mod            : bütün coinler {MODE_TR} (canlı mod elle seçilmeden canlı "
+          "hesaba emir gitmez)", flush=True)
+    for mode, label in (("kagit", "Kâğıt İşlem"), ("demo", "Demo Mode"),
+                        ("yari_otomatik", "Yarı Otomatik"), ("tam_otomatik", "Tam Otomatik")):
         before = [item for item, value in runtime.previous_modes.items() if value == mode]
         if before:
             print(f"                   Önceki oturumda {label}'da olanlar: "
@@ -167,6 +172,14 @@ def main(argv: list[str] | None = None) -> int:
         demo_text = ("anahtar bulundu; Binance Demo Mode'a (sahte para) bağlanıyor. "
                      "Durumu Demo işlem sekmesinde.")
     print(f"  Demo Mode      : {demo_text}", flush=True)
+    live = runtime.live
+    if live is None or live.trader is None:
+        live_text = (live.key_problem if live is not None and live.key_problem
+                     else "kapalı")
+    else:
+        live_text = ("anahtar bulundu; canlı hesaba (GERÇEK PARA) bağlanıyor, izinler "
+                     "okunuyor. Coinler Sadece Öneri'de; canlı emir için Canlı işlem sekmesi.")
+    print(f"  Canlı işlem    : {live_text}", flush=True)
     print(
         "  Piyasa verisi  : "
         + ("Binance genel veri akışı (hesap bilgisi yok, API anahtarı yok)" if online

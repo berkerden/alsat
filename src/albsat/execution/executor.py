@@ -1,8 +1,11 @@
-"""Demo Mode emir yürütücüsü (SPEC.md §4.5, §4.6; FAZ0-MIMARI.md Risk #1).
+"""Emir yürütücüsü (SPEC.md §4.5, §4.6; FAZ0-MIMARI.md Risk #1).
 
-Kâğıt motorunun Demo Mode karşılığı: risk motorundan geçen bir emir niyetini
-Binance Demo Mode hesabında gerçek emirlere çevirir ve pozisyonu kapanana
-kadar izler. Borsanın söylediği her zaman doğrudur; yürütücünün kaydı
+Kâğıt motorunun borsa karşılığı: risk motorundan geçen bir emir niyetini bir
+Binance hesabında gerçek emirlere çevirir ve pozisyonu kapanana kadar izler.
+Faz 5'te yalnızca Demo Mode vardı (``DemoExecutor``); Faz 6'da aynı yürütücü
+canlı hesap için de çalışır (``execution/live.py`` → ``LiveExecutor``). Hesaba
+özgü her şey ``execution/venue.py``'de: emir kimliği öneki, kayıt tabloları,
+Türkçe adlar. Borsanın söylediği her zaman doğrudur; yürütücünün kaydı
 borsayla her bağlanmada, uyanmada ve beş dakikada bir uzlaştırılır.
 
 **Emir akışı.** Giriş ``LIMIT_MAKER`` alıştır ve OTOCO listesinin çalışan
@@ -31,7 +34,8 @@ emir **aynı kimlikle sorgulanır**, asla yeni kimlikle yeniden gönderilmez.
 Borsa ``timestamp + recvWindow``'dan sonra isteği kabul etmediği için, o
 süre geçtikten sonra "bu kimlik yok" cevabı "emir hiç ulaşmadı" demektir.
 
-**Yalnızca kendi emirleri.** Kimliği ``albsat-demo-`` ile başlamayan
+**Yalnızca kendi emirleri.** Kimliği hesabın önekiyle (``albsat-demo-`` ya da
+``albsat-canli-``) başlamayan
 emirlere dokunulmaz; uzlaştırmada sayılır ve raporlanır. Kendi önekini
 taşıyan ama kayıtta olmayan bir alış emri (yetim) iptal edilir, çünkü
 dolarsa korumasız bir pozisyon açar.
@@ -71,12 +75,12 @@ from albsat.core.costs import FeePayment, LegCost, RoundTrip
 from albsat.core.fees import Liquidity, Side
 from albsat.core.filters import SymbolRules
 from albsat.core.money import ONE_HUNDRED, ZERO, format_for_api
-from albsat.data.commission import DEMO_FILENAME, CommissionStore, paper_costs
+from albsat.data.commission import CommissionStore, paper_costs
 from albsat.data.exchangeinfo import ExchangeInfoStore, refresh
 from albsat.data.klines import interval_ms
 from albsat.data.live import LiveMarket, Quote
 from albsat.exchange.signed import RECV_WINDOW_MS
-from albsat.exchange.trading import DemoTrader, ExchangeError
+from albsat.exchange.trading import DemoTrader, ExchangeError, SignedTrader
 from albsat.exchange.user_stream import (
     BalanceUpdate,
     ListUpdate,
@@ -120,7 +124,7 @@ from albsat.execution.ledger import (
 )
 from albsat.execution.planner import Plan, plan_exit, plan_oco, plan_otoco
 from albsat.execution.settings import ExecutionSettings
-from albsat.modes.state import MODE_DEMO, MODE_LABELS_TR
+from albsat.execution.venue import DEMO, DEMO_INFO_FILENAME, Venue
 from albsat.notify.base import (
     KIND_CANCEL,
     KIND_EXIT,
@@ -144,8 +148,6 @@ STATE_SETTINGS = "ayarlar"
 STATE_STREAK_RESET = "art_arda_sifirlama_utc"
 STATE_NOTIFIED_BREACHES = "bildirilen_sinirlar"
 STATE_BALANCES = "borsa_bakiyeleri"
-
-DEMO_INFO_FILENAME = "exchangeinfo-demo.json"
 
 TICK_SECONDS = 1.0
 RECONCILE_EVERY_SECONDS = 300.0
@@ -289,8 +291,12 @@ class _View:
         return self.rules.round_quantity(held) if self.rules is not None else held
 
 
-class DemoExecutor:
-    """Demo Mode hesabının tek sahibi; bütün emirler buradan gider."""
+class OrderExecutor:
+    """Bir Binance hesabının (``venue``: Demo ya da canlı) tek sahibi; o hesaba
+    giden bütün emirler buradan gider. Doğrudan kurulmaz: ``DemoExecutor`` ya da
+    ``LiveExecutor`` (``execution/live.py``) kullanılır."""
+
+    venue: Venue = DEMO
 
     def __init__(
         self,
@@ -299,9 +305,9 @@ class DemoExecutor:
         symbols: Sequence[str],
         engine: PaperEngine,
         live_market: LiveMarket,
-        demo_market: LiveMarket,
+        venue_market: LiveMarket,
         notifier: Notifier,
-        trader: DemoTrader | None,
+        trader: SignedTrader | None,
         public: Any = None,
         stream_factory: Callable[..., Any] | None = None,
         book_stream_factory: Callable[..., Any] | None = None,
@@ -313,18 +319,24 @@ class DemoExecutor:
         self.symbols = tuple(symbols)
         self.engine = engine
         self.live_market = live_market
-        self.demo_market = demo_market
+        #: Emirlerin eşleştiği defterin en iyi fiyatları. Demo'da ayrı bir akış
+        #: (Demo defteri), canlıda canlı piyasanın kendisi.
+        self.venue_market = venue_market
         self.notifier = notifier
         self.trader = trader
         self.public = public
         self.key_problem = key_problem
         self.clock = clock
         self.monotonic = monotonic
-        self.ledger = DemoLedger.in_directory(self.root)
+        venue = self.venue
+        self.ids = venue.ids
+        self.ledger = DemoLedger.in_directory(self.root, prefix=venue.tablo_oneki)
         self.audit: AuditLog = engine.audit
-        self.info_store = ExchangeInfoStore(self.root, DEMO_INFO_FILENAME)
+        self.info_store = (ExchangeInfoStore(self.root, venue.bilgi_dosyasi)
+                           if venue.bilgi_dosyasi else ExchangeInfoStore(self.root))
         self.live_info_store = ExchangeInfoStore(self.root)
-        self.commission_store = CommissionStore(self.root, DEMO_FILENAME)
+        self.commission_store = (CommissionStore(self.root, venue.komisyon_dosyasi)
+                                 if venue.komisyon_dosyasi else CommissionStore(self.root))
         self.health = ExecutorHealth()
         self.lock = threading.RLock()
         self._events: queue.Queue[UserEvent] = queue.Queue(maxsize=10_000)
@@ -358,7 +370,16 @@ class DemoExecutor:
         if book_stream_factory is not None:
             self.book_stream = book_stream_factory(self._on_book_event)
         engine.halt_hooks.append(self.on_halt)
+        self._attach(engine)
+
+    def _attach(self, engine: PaperEngine) -> None:
+        """Kâğıt motoruna "bu hesabın modu seçilebilir mi?" kancasını bağlar."""
         engine.demo_ready = self.not_ready_reason
+
+    @property
+    def demo_market(self) -> LiveMarket:
+        """Faz 5 adı."""
+        return self.venue_market
 
     # --- yardımcılar ------------------------------------------------------------
 
@@ -381,8 +402,10 @@ class DemoExecutor:
         return symbol.removesuffix("USDT")
 
     def costs_for(self, symbol: str) -> PaperCosts:
-        return paper_costs(self.root, symbol, filename=DEMO_FILENAME,
-                           account_label="Demo hesabından")
+        if self.venue.komisyon_dosyasi:
+            return paper_costs(self.root, symbol, filename=self.venue.komisyon_dosyasi,
+                               account_label=self.venue.hesaptan)
+        return paper_costs(self.root, symbol)
 
     def round_trips(self, symbol: str) -> tuple[RoundTrip, RoundTrip]:
         costs = self.costs_for(symbol)
@@ -406,14 +429,15 @@ class DemoExecutor:
         with self.lock:
             new = self.settings.updated(changes)
             self.ledger.set_json(STATE_SETTINGS, new.as_dict())
-            self.audit.write("demo_ayar", "Demo emir ayarları değişti", kaynak=source,
+            self.audit.write(f"{self.venue.kod}_ayar", f"{self.venue.ad} emir ayarları değişti",
+                             kaynak=source,
                              ayrinti={key: str(value) for key, value in changes.items()})
             return new
 
     def _price_of(self, asset: str) -> Decimal | None:
         """Komisyon varlığının (ör. BNB) USDT değeri; bilinmiyorsa ``None``."""
         symbol = f"{asset}USDT"
-        quote = self.demo_market.quote(symbol) or self.live_market.quote(symbol)
+        quote = self.venue_market.quote(symbol) or self.live_market.quote(symbol)
         return quote.alis if quote is not None else None
 
     def _econ(self, position: DemoPosition, fills: Sequence[DemoFill]) -> Economics:
@@ -440,20 +464,21 @@ class DemoExecutor:
     # --- hazır olma ------------------------------------------------------------------
 
     def not_ready_reason(self) -> str | None:
-        """Demo Mode seçilebilir mi? Kilit almaz (kâğıt motorunun kilidinden çağrılır)."""
+        """Bu hesabın modu seçilebilir mi? Kilit almaz (kâğıt motorunun kilidinden
+        çağrılır)."""
+        venue = self.venue
         if self.trader is None:
-            return self.key_problem or (
-                "Demo Mode anahtarı kurulu değil. Kurmak için: bash kurulum.sh demo-anahtar")
+            return self.key_problem or venue.anahtar_yok
         if self.health.hazirlik_sorunu:
             return self.health.hazirlik_sorunu
         if not self.health.hazirlik_tamam:
-            return "Demo bağlantısı hazırlanıyor (saat, filtreler, hesap, uzlaştırma)."
+            return f"{venue.ad} bağlantısı hazırlanıyor (saat, filtreler, hesap, uzlaştırma)."
         if self.trader.budget.status().engelli:
-            return "Binance IP engeli (418) sürüyor; engel bitene kadar Demo işlem yok."
+            return f"Binance IP engeli (418) sürüyor; engel bitene kadar {venue.ad} işlem yok."
         if self.stream is not None:
             status = self.stream.status()
             if not status.abone:
-                return ("Demo hesap akışına bağlı değil"
+                return (f"{venue.ad} hesap akışına bağlı değil"
                         + (f": {status.son_hata}" if status.son_hata else ".")
                         + " Dolumlar görülemeyeceği için yeni emir açılmaz.")
         if not self._reconciled:
@@ -466,7 +491,8 @@ class DemoExecutor:
         if self.trader is None or (self._thread is not None and self._thread.is_alive()):
             return
         self._stop.clear()
-        self._thread = threading.Thread(target=self._run, name="demo-yurutucu", daemon=True)
+        self._thread = threading.Thread(target=self._run, name=f"{self.venue.kod}-yurutucu",
+                                        daemon=True)
         self._thread.start()
 
     def stop(self) -> None:
@@ -488,7 +514,7 @@ class DemoExecutor:
                         self.bootstrap()
                 self.tick()
             except Exception as error:  # noqa: BLE001 - tek hata döngüyü durdurmasın
-                logger.exception("Demo yürütücü hatası")
+                logger.exception("%s yürütücü hatası", self.venue.ad)
                 self.health.son_hata = f"{type(error).__name__}: {error}"[:300]
             self._stop.wait(TICK_SECONDS)
 
@@ -502,17 +528,22 @@ class DemoExecutor:
             try:
                 trader.sync_time()
                 self._last_time_sync = self.monotonic()
-                self._refresh_info()
-                problem = self._refresh_account(check_permissions=True)
+                problem = self._check_key()
+                if problem is None:
+                    self._refresh_info()
+                    problem = self._refresh_account(check_permissions=True)
                 if problem is not None:
+                    # Hazırlık 30 saniyede bir yeniden denenir; aynı sorun bir kez bildirilir.
+                    if problem != self.health.hazirlik_sorunu:
+                        self._note(problem)
+                        self._notify(f"⛔ {self.venue.baslik} kullanılamıyor: {problem}",
+                                     KIND_SYSTEM)
                     self.health.hazirlik_sorunu = problem
-                    self._note(problem)
-                    self._notify(f"⛔ Demo Mode kullanılamıyor: {problem}", KIND_SYSTEM)
                     return False
                 self._refresh_commission()
             except Exception as error:  # noqa: BLE001 - hazırlık yeniden denenecek
                 info = errors.classify(error)
-                self.health.son_hata = f"Demo hazırlığı: {info.mesaj_tr}"[:300]
+                self.health.son_hata = f"{self.venue.ad} hazırlığı: {info.mesaj_tr}"[:300]
                 self._note(self.health.son_hata)
                 return False
             self.health.hazirlik_sorunu = None
@@ -522,8 +553,12 @@ class DemoExecutor:
                 self.book_stream.start()
             self.reconcile("açılış", full=True)
             self.health.hazirlik_tamam = True
-            self._note("Demo bağlantısı hazır")
+            self._note(f"{self.venue.ad} bağlantısı hazır")
             return True
+
+    def _check_key(self) -> str | None:
+        """Anahtarın izinleri (canlıda ``apiRestrictions``); Demo'da denetlenecek izin yok."""
+        return None
 
     def _refresh_info(self) -> None:
         snapshot = self.info_store.read()
@@ -535,7 +570,7 @@ class DemoExecutor:
         refresh(self.info_store, self.public, list(self.symbols))
         self._rules_cache.clear()
         self.health.filtre_utc = iso(self.clock())
-        self._note("Demo borsa filtreleri tazelendi")
+        self._note(f"{self.venue.ad} borsa filtreleri tazelendi")
 
     def _refresh_commission(self) -> None:
         trader = self.trader
@@ -549,7 +584,7 @@ class DemoExecutor:
         payloads = {symbol: trader.commission(symbol) for symbol in self.symbols}
         self.commission_store.write(payloads)
         self.health.komisyon_utc = iso(self.clock())
-        self._note("Demo hesabının komisyonu ölçüldü")
+        self._note(f"{self.venue.hesabin} komisyonu ölçüldü")
 
     def _refresh_account(self, *, check_permissions: bool = False) -> str | None:
         trader = self.trader
@@ -570,8 +605,11 @@ class DemoExecutor:
             asset: [str(free), str(locked)] for asset, (free, locked) in balances.items()
         })
         if check_permissions:
-            return demo_account_problem(payload)
+            return self._account_problem(payload)
         return None
+
+    def _account_problem(self, payload: dict[str, Any]) -> str | None:
+        return demo_account_problem(payload)
 
     def _free(self, asset: str) -> Decimal | None:
         item = self._balances.get(asset)
@@ -589,16 +627,16 @@ class DemoExecutor:
     def on_stream_state(self, connected: bool, reason: str) -> None:
         if connected:
             self._reconcile_reason = "hesap akışı bağlandı"
-            self._note("Demo hesap akışına abone olundu")
+            self._note(f"{self.venue.ad} hesap akışına abone olundu")
         else:
-            self._note(f"Demo hesap akışı kapalı: {reason}")
+            self._note(f"{self.venue.ad} hesap akışı kapalı: {reason}")
 
     def _on_book_event(self, event: Any) -> None:
         symbol = getattr(event, "sembol", None)
         bid = getattr(event, "alis", None)
         ask = getattr(event, "satis", None)
         if symbol and bid is not None and ask is not None:
-            self.demo_market.on_book(symbol, bid, ask)
+            self.venue_market.on_book(symbol, bid, ask)
 
     def on_halt(self, title: str, source: str) -> None:
         """Kâğıt motorunun durdurma kancası: kilit almaz, istek bırakır."""
@@ -631,8 +669,8 @@ class DemoExecutor:
                     self.ledger.update_position(position.id, {
                         "giris_iptal_istegi": f"Otomatik işlem durduruldu: {title}."})
                     count += 1
-            self.audit.write("demo_durdurma",
-                             f"Demo: {count} bekleyen giriş iptal ediliyor ({title})",
+            self.audit.write(f"{self.venue.kod}_durdurma",
+                             f"{self.venue.ad}: {count} bekleyen giriş iptal ediliyor ({title})",
                              kaynak=source)
 
     # --- tur --------------------------------------------------------------------------
@@ -648,7 +686,7 @@ class DemoExecutor:
             mono_delta = mono - self._last_mono
             self._last_wall, self._last_mono = wall, mono
             if wall_delta - mono_delta > SLEEP_JUMP_SECONDS or mono_delta > SLEEP_JUMP_SECONDS:
-                self._note("Uyku/donma algılandı; Demo hesabı uzlaştırılıyor")
+                self._note(f"Uyku/donma algılandı; {self.venue.hesap} uzlaştırılıyor")
                 if self.stream is not None:
                     self.stream.reconnect()
                 self._reconcile_reason = "uyanma"
@@ -656,6 +694,7 @@ class DemoExecutor:
                 self._last_time_sync = mono
                 with contextlib.suppress(Exception):
                     self.trader.sync_time()
+            self._periodic(mono)
             stream_ok = self.stream is None or self.stream.status().abone
             every = RECONCILE_EVERY_SECONDS if stream_ok else RECONCILE_STREAM_DOWN_SECONDS
             if self._reconcile_reason is not None or mono - self._last_reconcile >= every:
@@ -669,11 +708,14 @@ class DemoExecutor:
                 try:
                     self._advance(position)
                 except Exception as error:  # noqa: BLE001 - bir pozisyon diğerlerini durdurmasın
-                    logger.exception("Demo pozisyon adımı başarısız")
+                    logger.exception("%s pozisyon adımı başarısız", self.venue.ad)
                     self.health.son_hata = (
                         f"{position.sembol} #{position.id}: {type(error).__name__}: {error}"
                     )[:300]
                     self._cool(position.id, ERROR_COOLDOWN_SECONDS)
+
+    def _periodic(self, mono: float) -> None:
+        """Hesaba özgü düzenli iş (canlıda anahtar izinlerinin yeniden okunması)."""
 
     # --- emir durumu güncelleme ---------------------------------------------------------
 
@@ -681,7 +723,7 @@ class DemoExecutor:
         client = update.kimlik
         leg = self.ledger.leg(client)
         if leg is None:
-            if ids.is_ours(client):
+            if self.ids.is_ours(client):
                 self._note(f"Kayıtta olmayan bir albsat emri görüldü: {client} ({update.durum})")
             return None
         status = update.durum or leg.durum
@@ -817,7 +859,7 @@ class DemoExecutor:
         """Kayıtları borsayla karşılaştırır; borsanın söylediği esastır."""
         trader = self.trader
         if trader is None:
-            return "Demo anahtarı yok; uzlaştırma yapılmadı."
+            return f"{self.venue.ad} anahtarı yok; uzlaştırma yapılmadı."
         with self.lock:
             self._drain()
             mono = self.monotonic()
@@ -841,7 +883,7 @@ class DemoExecutor:
                     continue
                 for data in orders:
                     client = str(data.get("clientOrderId") or "")
-                    if not ids.is_ours(client):
+                    if not self.ids.is_ours(client):
                         manual[symbol] = manual.get(symbol, 0) + 1
                         continue
                     seen.add(client)
@@ -863,7 +905,8 @@ class DemoExecutor:
                                 f"{data.get('origQty')} @ {data.get('price')} (dokunulmadı; "
                                 "bir coini koruyor olabilir)")
                     warnings.append(text)
-                    self.audit.write("demo_yetim_emir", text, kaynak=SOURCE_SYSTEM)
+                    self.audit.write(f"{self.venue.kod}_yetim_emir", text,
+                                     kaynak=SOURCE_SYSTEM)
             for leg in open_legs:
                 if leg.istemci_kimligi in seen:
                     continue
@@ -893,18 +936,19 @@ class DemoExecutor:
                     warnings.extend(self._balance_warnings())
                 except Exception as error:  # noqa: BLE001
                     failed = True
-                    warnings.append(f"Demo bakiyesi alınamadı: {errors.classify(error).mesaj_tr}")
+                    warnings.append(f"{self.venue.ad} bakiyesi alınamadı: "
+                                    f"{errors.classify(error).mesaj_tr}")
                 self.health.elle_emirler = manual
             if not failed:
                 self._reconciled = True
             active = len(self.ledger.active())
-            parts = [f"{active} açık Demo pozisyonu"]
+            parts = [f"{active} açık {self.venue.pozisyon}"]
             if manual:
                 parts.append("elle verilmiş emirler (dokunulmadı): " + ", ".join(
                     f"{symbol} {count}" for symbol, count in sorted(manual.items())))
             if orphans:
                 parts.append(f"{orphans} kayıtsız albsat emri")
-            summary = f"Demo uzlaştırma ({reason}): " + "; ".join(parts) + "."
+            summary = f"{self.venue.ad} uzlaştırma ({reason}): " + "; ".join(parts) + "."
             if failed:
                 summary += " Bazı sorgular başarısız; yeniden denenecek."
             self.health.son_uzlastirma_utc = iso(self.clock())
@@ -929,14 +973,15 @@ class DemoExecutor:
             step = rules.lot.step_size if rules is not None and rules.lot else ZERO
             if free + locked + step < held:
                 warnings.append(
-                    f"Demo hesabında {base} bakiyesi ({_m(free + locked)}) bot kaydının "
-                    f"({_m(held)}) altında. Coin elle satılmış ya da Demo bakiyesi sıfırlanmış "
-                    "olabilir; bot yalnızca borsada olanı satabilir."
+                    f"{self.venue.hesapta} {base} bakiyesi ({_m(free + locked)}) bot kaydının "
+                    f"({_m(held)}) altında. {self.venue.bakiye_notu}; bot yalnızca borsada "
+                    "olanı satabilir."
                 )
         usdt = self._free("USDT")
         if usdt is not None and usdt < account.serbest_usdt:
             warnings.append(
-                f"Demo hesabındaki serbest USDT ({_usdt(usdt)}) bot bütçesinin serbest kısmından "
+                f"{self.venue.hesaptaki} serbest USDT ({_usdt(usdt)}) bot bütçesinin serbest "
+                "kısmından "
                 f"({_usdt(account.serbest_usdt)}) az; emir büyüklüğü borsadaki bakiyeyle "
                 "sınırlanıyor."
             )
@@ -1034,11 +1079,15 @@ class DemoExecutor:
     # --- emir öncesi kapılar ------------------------------------------------------------------
 
     def demo_quote(self, symbol: str, *, fresh: bool = False) -> Quote | None:
-        """Demo defterinin en iyi alış/satışı: akıştan, bayatsa REST'ten.
+        """Faz 5 adı."""
+        return self.venue_quote(symbol, fresh=fresh)
+
+    def venue_quote(self, symbol: str, *, fresh: bool = False) -> Quote | None:
+        """Emirlerin eşleştiği defterin en iyi alış/satışı: akıştan, bayatsa REST'ten.
 
         ``fresh``: akıştaki fiyata güvenilmez, REST'ten okunur (borsa "hemen
         eşleşir" dediyse elimizdeki fiyat geride kalmıştır)."""
-        quote = self.demo_market.quote(symbol)
+        quote = self.venue_market.quote(symbol)
         now = self.clock()
         if not fresh and quote is not None and \
                 (now - quote.zaman).total_seconds() <= QUOTE_MAX_AGE_SECONDS:
@@ -1049,12 +1098,12 @@ class DemoExecutor:
             self._last_quote_poll[symbol] = mono
             try:
                 for item in self.public.book_tickers([symbol]):
-                    self.demo_market.on_book(str(item["symbol"]),
+                    self.venue_market.on_book(str(item["symbol"]),
                                              Decimal(str(item["bidPrice"])),
                                              Decimal(str(item["askPrice"])))
             except Exception as error:  # noqa: BLE001 - fiyat yoksa kapı kapalı kalır
-                self.health.son_hata = f"Demo fiyatı alınamadı: {error}"[:300]
-            quote = self.demo_market.quote(symbol)
+                self.health.son_hata = f"{self.venue.fiyat} alınamadı: {error}"[:300]
+            quote = self.venue_market.quote(symbol)
             if quote is not None and (now - quote.zaman).total_seconds() <= QUOTE_MAX_AGE_SECONDS:
                 return quote
         return None
@@ -1074,10 +1123,17 @@ class DemoExecutor:
         return short, day
 
     def demo_gates(self, intent: risk.OrderIntent, *, quantity_usdt: Decimal | None) -> list[Gate]:
+        """Faz 5 adı."""
+        return self.venue_gates(intent, quantity_usdt=quantity_usdt)
+
+    def venue_gates(self, intent: risk.OrderIntent, *,
+                    quantity_usdt: Decimal | None) -> list[Gate]:
+        venue = self.venue
+        k = venue.kod
         gates: list[Gate] = []
         reason = self.not_ready_reason()
-        gates.append(Gate("demo_baglanti", "Demo bağlantısı", reason is None,
-                          reason or "Demo hesabı bağlı, akış açık, uzlaştırma tamam."))
+        gates.append(Gate(f"{k}_baglanti", f"{venue.ad} bağlantısı", reason is None,
+                          reason or f"{venue.hesap} bağlı, akış açık, uzlaştırma tamam."))
         unresolved = [leg for leg in self.ledger.open_legs() if leg.belirsiz]
         gates.append(Gate(
             "belirsiz_emir", "Sonucu bilinmeyen emir", not unresolved,
@@ -1085,12 +1141,12 @@ class DemoExecutor:
             f"{len(unresolved)} emrin sonucu sorgulanıyor; netleşmeden yeni emir açılmaz."))
         rules = self.rules_for(intent.sembol)
         if rules is None:
-            gates.append(Gate("demo_filtre", "Borsa filtreleri", False,
+            gates.append(Gate(f"{k}_filtre", "Borsa filtreleri", False,
                               "Borsa filtreleri yok; emir yuvarlanamaz.", olculemedi=True))
         else:
             ok = rules.tradable and rules.otoco_allowed
             gates.append(Gate(
-                "demo_filtre", "Borsa filtreleri", ok,
+                f"{k}_filtre", "Borsa filtreleri", ok,
                 f"{intent.sembol} işlemde, OTOCO destekli." if ok else
                 f"{intent.sembol} şu an OTOCO emri alamıyor (durum {rules.status}, "
                 f"OTO {'var' if rules.oto_allowed else 'yok'}, OCO "
@@ -1110,26 +1166,31 @@ class DemoExecutor:
                 order_ok = False
                 text = f"Bugün {counts.son_1gun} emir; günlük sınır {day}. Yeni giriş yok."
         gates.append(Gate("emir_sayaci", "Emir sayısı sınırı", order_ok, text))
-        quote = self.demo_quote(intent.sembol)
+        quote = self.venue_quote(intent.sembol)
         if quote is None:
-            gates.append(Gate("limit_maker", "Limit-maker kuralı (Demo defteri)", False,
-                              "Demo defterinin fiyatı alınamadı.", olculemedi=True))
+            gates.append(Gate("limit_maker", f"Limit-maker kuralı ({venue.defter})", False,
+                              f"{venue.defterin} fiyatı alınamadı.", olculemedi=True))
         else:
             gate = post_only_gate(intent.giris, quote.satis)
-            gates.append(Gate(gate.ad, "Limit-maker kuralı (Demo defteri)", gate.gecti,
-                              gate.aciklama + " (Demo Mode'un defteri canlıdan ayrıdır.)"))
+            gates.append(Gate(gate.ad, f"Limit-maker kuralı ({venue.defter})", gate.gecti,
+                              gate.aciklama + (" (Demo Mode'un defteri canlıdan ayrıdır.)"
+                                               if venue.ayri_defter else "")))
         if quantity_usdt is not None:
             free = self._free("USDT")
             gates.append(Gate(
-                "demo_bakiye", "Demo hesabı bakiyesi",
+                f"{k}_bakiye", f"{venue.hesap} bakiyesi",
                 free is not None and free >= quantity_usdt,
-                f"Demo hesabında serbest {_usdt(free)} USDT, emir {_usdt(quantity_usdt)} USDT."
-                if free is not None else "Demo hesabının bakiyesi henüz okunmadı.",
+                f"{venue.hesapta} serbest {_usdt(free)} USDT, emir {_usdt(quantity_usdt)} USDT."
+                if free is not None else f"{venue.hesabin} bakiyesi henüz okunmadı.",
                 olculemedi=free is None))
         return gates
 
+    def entry_cap(self, amount_usdt: Decimal | None = None) -> Decimal | None:
+        """Giriş emrinin tutar tavanı; ``None``: tavan yok (Demo, bütçe yeter)."""
+        return amount_usdt
+
     def evaluate(self, intent: risk.OrderIntent, *, market: MarketState,
-                 now: datetime) -> risk.RiskDecision:
+                 now: datetime, amount_usdt: Decimal | None = None) -> risk.RiskDecision:
         to_target, to_stop = self.round_trips(intent.sembol)
         mode = self.engine.modes.get(intent.sembol)
         decision = risk.evaluate(
@@ -1141,17 +1202,13 @@ class DemoExecutor:
             round_trip_to_target=to_target,
             round_trip_to_stop=to_stop,
             exit_slippage_pct=self.costs_for(intent.sembol).kayma_yuzde,
-            mode_open=mode == MODE_DEMO,
-            mode_text=(
-                f"{intent.sembol} Demo Mode'da."
-                if mode == MODE_DEMO
-                else f"{intent.sembol} şu an '{MODE_LABELS_TR.get(mode, mode)}' modunda; Demo "
-                "emri için Demo Mode'a alın."
-            ),
+            mode_open=mode in self.venue.modlar,
+            mode_text=self.venue.mod_text(intent.sembol, mode),
             disabled_rules=self.engine.disabled_rules(),
+            max_notional_usdt=self.entry_cap(amount_usdt),
         )
         size = decision.pozisyon
-        gates = self.demo_gates(intent, quantity_usdt=size.tutar_usdt if size else None)
+        gates = self.venue_gates(intent, quantity_usdt=size.tutar_usdt if size else None)
         return risk.RiskDecision(
             izin=decision.izin and all(gate.gecti for gate in gates),
             kapilar=(*decision.kapilar, *gates),
@@ -1160,10 +1217,10 @@ class DemoExecutor:
         )
 
     def preview(self, intent: risk.OrderIntent, *, market: MarketState,
-                now: datetime) -> PlaceResult:
+                now: datetime, amount_usdt: Decimal | None = None) -> PlaceResult:
         """Emir gönderilmeden: risk kapıları ve borsaya gidecek emirler."""
         with self.lock:
-            decision = self.evaluate(intent, market=market, now=now)
+            decision = self.evaluate(intent, market=market, now=now, amount_usdt=amount_usdt)
             plan = self._plan(intent, decision, token="onizleme0000", attempt=1)
             message = decision.ozet_tr
             if plan is not None and not plan.gecerli:
@@ -1179,7 +1236,7 @@ class DemoExecutor:
             rules=rules, token=token, attempt=attempt, entry=intent.giris, target=intent.hedef,
             stop=intent.stop, quantity=decision.pozisyon.miktar,
             fee_rate=self.buy_fee_rate(intent.sembol), carried_dust=self.bot_dust(intent.sembol),
-            settings=self.settings,
+            settings=self.settings, scheme=self.ids,
         )
 
     # --- emir açma --------------------------------------------------------------------------
@@ -1193,15 +1250,17 @@ class DemoExecutor:
         meta: OrderMeta | None = None,
         source: str = SOURCE_LOOP,
         reprice: bool = False,
+        amount_usdt: Decimal | None = None,
     ) -> PlaceResult:
-        """Risk kapılarından ve Demo kapılarından geçerse OTOCO gönderir."""
+        """Risk kapılarından ve hesabın kapılarından geçerse OTOCO gönderir."""
         meta = meta or OrderMeta()
+        venue = self.venue
         with self.lock:
-            decision = self.evaluate(intent, market=market, now=now)
+            decision = self.evaluate(intent, market=market, now=now, amount_usdt=amount_usdt)
             label = meta.kural_etiketi or ("elle emir" if intent.kaynak == risk.SOURCE_MANUAL
                                            else intent.kural_kimligi or "")
             if not decision.izin or decision.pozisyon is None:
-                self.audit.write("demo_emir_reddedildi", f"{intent.sembol} {label}: "
+                self.audit.write(f"{venue.kod}_emir_reddedildi", f"{intent.sembol} {label}: "
                                  f"{decision.ozet_tr}", kaynak=SOURCE_RISK,
                                  ayrinti={"sembol": intent.sembol, "kapali": ", ".join(
                                      item.ad for item in decision.kapali_kapilar)}, now=now)
@@ -1211,7 +1270,7 @@ class DemoExecutor:
             if plan is None or not plan.gecerli:
                 text = "Emir borsa filtrelerine uymuyor: " + " ".join(
                     plan.sorunlar if plan else ("filtreler yok",))
-                self.audit.write("demo_emir_reddedildi", f"{intent.sembol} {label}: {text}",
+                self.audit.write(f"{venue.kod}_emir_reddedildi", f"{intent.sembol} {label}: {text}",
                                  kaynak=SOURCE_RISK, now=now)
                 return PlaceResult(decision, None, text, plan)
             size = decision.pozisyon
@@ -1249,8 +1308,8 @@ class DemoExecutor:
                 "notlar": _json_list(meta.notlar),
             }, [dict(leg, gonderim_ms=self._server_ms()) for leg in plan.legs])
             self.audit.write(
-                "demo_emir",
-                f"Demo OTOCO: {position.sembol} {position.miktar} @ {position.giris} (hedef "
+                f"{venue.kod}_emir",
+                f"{venue.ad} OTOCO: {position.sembol} {position.miktar} @ {position.giris} (hedef "
                 f"{position.hedef}, stop {position.stop}, "
                 f"satış miktarı {position.bekleyen_miktar})",
                 kaynak=source,
@@ -1264,7 +1323,7 @@ class DemoExecutor:
             while (info is not None and info.yeniden_fiyatla and reprice
                    and attempt <= self.settings.yeniden_fiyatlama_denemesi):
                 repriced = self._reprice(position, intent, market=market, now=now,
-                                         attempt=attempt + 1)
+                                         attempt=attempt + 1, amount_usdt=amount_usdt)
                 if repriced is None:
                     break
                 position, plan = repriced
@@ -1273,20 +1332,21 @@ class DemoExecutor:
             position = self.ledger.position(position.id) or position
             if info is None:
                 self._notify(
-                    f"📝 DEMO EMİR — {position.sembol} {position.periyot}\n"
+                    f"📝 {venue.buyuk} EMİR — {position.sembol} {position.periyot}\n"
                     f"Kaynak: {label}\n"
                     f"Giriş (limit-maker) {position.giris}, hedef {position.hedef}, stop "
                     f"{position.stop}\nMiktar {position.miktar} ≈ "
                     f"{_usdt(position.dec('tutar_usdt'))} USDT; stopta zarar ≈ "
                     f"{_usdt(position.dec('stop_zarari_usdt'))} USDT\n"
                     f"Geçerlilik: {istanbul_text(from_ms(position.gecerlilik_bitis_ms))}'a kadar.\n"
-                    "Binance Demo Mode (sahte para).",
+                    f"{venue.ortam_tr}.",
                     KIND_ORDER,
                 )
-                return PlaceResult(decision, position, "Demo emri borsaya gönderildi.", plan)
+                return PlaceResult(decision, position, f"{venue.emri} borsaya gönderildi.",
+                                   plan)
             if info.belirsiz:
                 return PlaceResult(decision, position, info.mesaj_tr, plan)
-            self._notify(f"❌ DEMO EMİR REDDEDİLDİ — {position.sembol}\n{info.mesaj_tr}",
+            self._notify(f"❌ {venue.buyuk} EMİR REDDEDİLDİ — {position.sembol}\n{info.mesaj_tr}",
                          KIND_ORDER)
             return PlaceResult(decision, position, info.mesaj_tr, plan)
 
@@ -1314,7 +1374,7 @@ class DemoExecutor:
             self.ledger.update_position(position.id, {"durum": POS_REJECTED,
                                                       "aciklama": info.mesaj_tr,
                                                       "kapanis_utc": iso(self.clock())})
-            self.audit.write("demo_emir_reddedildi",
+            self.audit.write(f"{self.venue.kod}_emir_reddedildi",
                              f"{position.sembol} #{position.id}: {info.mesaj_tr}",
                              kaynak=SOURCE_SYSTEM, ayrinti={"kod": info.kod,
                                                             "kategori": info.kategori})
@@ -1324,9 +1384,10 @@ class DemoExecutor:
         return None
 
     def _reprice(self, position: DemoPosition, intent: risk.OrderIntent, *, market: MarketState,
-                 now: datetime, attempt: int) -> tuple[DemoPosition, Plan] | None:
+                 now: datetime, attempt: int,
+                 amount_usdt: Decimal | None = None) -> tuple[DemoPosition, Plan] | None:
         """Limit-maker giriş hemen eşleşeceği için reddedildi: en iyi alışa çekip yeniden."""
-        quote = self.demo_quote(intent.sembol, fresh=True)
+        quote = self.venue_quote(intent.sembol, fresh=True)
         rules = self.rules_for(intent.sembol)
         if quote is None or rules is None:
             return None
@@ -1336,7 +1397,7 @@ class DemoExecutor:
         new_intent = risk.OrderIntent(sembol=intent.sembol, periyot=intent.periyot, giris=entry,
                                       hedef=intent.hedef, stop=intent.stop, kaynak=intent.kaynak,
                                       kural_kimligi=intent.kural_kimligi)
-        decision = self.evaluate(new_intent, market=market, now=now)
+        decision = self.evaluate(new_intent, market=market, now=now, amount_usdt=amount_usdt)
         if not decision.izin or decision.pozisyon is None:
             self._note(f"{intent.sembol} yeniden fiyatlama risk kapısına takıldı: "
                        f"{decision.ozet_tr}")
@@ -1345,8 +1406,8 @@ class DemoExecutor:
         if plan is None or not plan.gecerli:
             return None
         notes = position.not_listesi + [
-            f"Giriş {position.giris} Demo defterinde hemen eşleşeceği için reddedildi; en iyi "
-            f"alışa ({entry}) çekilip yeniden gönderildi (deneme {attempt})."]
+            f"Giriş {position.giris} {self.venue.defterde} hemen eşleşeceği için reddedildi; "
+            f"en iyi alışa ({entry}) çekilip yeniden gönderildi (deneme {attempt})."]
         size = decision.pozisyon
         updated = self.ledger.update_position(position.id, {
             "giris": plan.params["workingPrice"],
@@ -1365,21 +1426,34 @@ class DemoExecutor:
         return updated, plan
 
     def place_from_card(self, card: Any, rule: Any) -> PlaceResult | None:
-        """Canlı döngüden: coin Demo Mode'dayken yeni AL sinyali."""
+        """Canlı döngüden: coin bu hesabın modundayken yeni AL sinyali."""
         now = self.clock()
         signal_close = parse_utc(card.sinyal_mumu_kapanis_utc)
         if signal_close is not None and (now - signal_close).total_seconds() > \
                 SIGNAL_MAX_AGE_SECONDS:
-            self._note(f"{card.sembol} {card.kural_etiketi}: sinyal mumu eski, Demo emri açılmadı")
+            self._note(f"{card.sembol} {card.kural_etiketi}: sinyal mumu eski, "
+                       f"{self.venue.emri.lower()} açılmadı")
             return None
+        intent, meta = self.card_intent(card, rule)
+        rules = self.rules_for(card.sembol)
+        result = self.place(intent, market=self.live_market.market_state(
+            card.sembol, card.periyot, rules), now=now, meta=meta, source=SOURCE_LOOP,
+            reprice=True)
+        if result.pozisyon is None:
+            self._notify(f"ℹ️ {card.sembol} sinyali için {self.venue.emri.lower()} açılmadı.\n"
+                         f"{result.mesaj}", KIND_SIGNAL)
+        return result
+
+    def card_intent(self, card: Any, rule: Any) -> tuple[risk.OrderIntent, OrderMeta]:
+        """Sinyal kartından emir niyeti; giriş defterin satışının üstündeyse en iyi alışa."""
         entry = card.giris
         notes: list[str] = []
-        quote = self.demo_quote(card.sembol)
+        quote = self.venue_quote(card.sembol)
         rules = self.rules_for(card.sembol)
         if quote is not None and entry >= quote.satis and rules is not None:
             entry = rules.round_price(quote.alis, Side.BUY)
-            notes.append(f"Giriş {card.giris} Demo defterindeki en iyi satışın ({quote.satis}) "
-                         f"üstünde kaldığı için en iyi alışa ({entry}) yazıldı.")
+            notes.append(f"Giriş {card.giris} {self.venue.defterdeki} en iyi satışın "
+                         f"({quote.satis}) üstünde kaldığı için en iyi alışa ({entry}) yazıldı.")
         intent = risk.OrderIntent(sembol=card.sembol, periyot=card.periyot, giris=entry,
                                   hedef=card.hedef1, stop=card.stop, kaynak=risk.SOURCE_RULE,
                                   kural_kimligi=card.kural_kimligi)
@@ -1393,13 +1467,7 @@ class DemoExecutor:
             yeniden_fiyatlama=1 if notes else 0,
             notlar=tuple(notes),
         )
-        result = self.place(intent, market=self.live_market.market_state(
-            card.sembol, card.periyot, rules), now=now, meta=meta, source=SOURCE_LOOP,
-            reprice=True)
-        if result.pozisyon is None:
-            self._notify(f"ℹ️ {card.sembol} sinyali için Demo emri açılmadı.\n{result.mesaj}",
-                         KIND_SIGNAL)
-        return result
+        return intent, meta
 
     # --- kullanıcı istekleri ------------------------------------------------------------------
 
@@ -1407,14 +1475,15 @@ class DemoExecutor:
         with self.lock:
             position = self.ledger.position(position_id)
             if position is None or position.bitti:
-                raise ValueError("Bu Demo pozisyonu yok ya da bitmiş.")
+                raise ValueError(f"Bu {self.venue.pozisyon} yok ya da bitmiş.")
             legs = self.ledger.legs(position.id)
             if not any(leg.rol == ROLE_ENTRY and (leg.canli or leg.belirsiz) for leg in legs):
                 raise ValueError("Bu pozisyonun bekleyen girişi yok; kapatmak için 'Kapat'.")
             updated = self.ledger.update_position(position.id, {
                 "giris_iptal_istegi": "Kullanıcı girişi iptal etti."})
-            self.audit.write("demo_iptal_istegi", f"{position.sembol} #{position.id} girişi "
-                             "iptal ediliyor", kaynak=source)
+            self.audit.write(f"{self.venue.kod}_iptal_istegi",
+                             f"{position.sembol} #{position.id} girişi iptal ediliyor",
+                             kaynak=source)
             self._cooldown.pop(position.id, None)
             self._advance(updated)
             return self.ledger.position(position.id) or updated
@@ -1424,11 +1493,12 @@ class DemoExecutor:
         with self.lock:
             position = self.ledger.position(position_id)
             if position is None or position.bitti:
-                raise ValueError("Bu Demo pozisyonu yok ya da bitmiş.")
+                raise ValueError(f"Bu {self.venue.pozisyon} yok ya da bitmiş.")
             updated = self.ledger.update_position(position.id, {
                 "cikis_istegi": reason,
                 "aciklama": f"Kapatılıyor: {EXIT_LABELS_TR.get(reason, reason)}."})
-            self.audit.write("demo_kapatma_istegi", f"{position.sembol} #{position.id} "
+            self.audit.write(f"{self.venue.kod}_kapatma_istegi",
+                             f"{position.sembol} #{position.id} "
                              f"kapatılıyor ({EXIT_LABELS_TR.get(reason, reason)})",
                              kaynak=source)
             self._cooldown.pop(position.id, None)
@@ -1436,7 +1506,7 @@ class DemoExecutor:
             return self.ledger.position(position.id) or updated
 
     def kill_switch(self, *, close_positions: bool, source: str) -> int:
-        """ACİL DURDUR'un Demo kısmı. Kâğıt motorunun ``kill_switch``'i modları zaten
+        """ACİL DURDUR'un bu hesaptaki kısmı. Kâğıt motorunun ``kill_switch``'i modları zaten
         indirmiş ve bu yürütücüye bekleyen girişleri iptal isteği bırakmıştır."""
         with self.lock:
             self._apply_halts()
@@ -1446,7 +1516,8 @@ class DemoExecutor:
                     self.ledger.update_position(position.id, {
                         "cikis_istegi": EXIT_KILL, "aciklama": "ACİL DURDUR: kapatılıyor."})
                     count += 1
-            self.audit.write("demo_acil_durdur", "Demo acil durdurma çalıştı", kaynak=source,
+            self.audit.write(f"{self.venue.kod}_acil_durdur",
+                             f"{self.venue.ad} acil durdurma çalıştı", kaynak=source,
                              ayrinti={"kapatilan": count, "pozisyonlar_kapatildi": close_positions})
             if self.trader is not None and self.health.hazirlik_tamam:
                 for position in self.ledger.active():
@@ -1458,18 +1529,20 @@ class DemoExecutor:
     def reset_streak(self, *, source: str, now: datetime) -> None:
         with self.lock:
             self.ledger.set_state(STATE_STREAK_RESET, iso(now))
-            self.audit.write("demo_art_arda_sifirlama", "Demo art arda kayıp sayacı sıfırlandı",
+            self.audit.write(f"{self.venue.kod}_art_arda_sifirlama",
+                             f"{self.venue.ad} art arda kayıp sayacı sıfırlandı",
                              kaynak=source, now=now)
 
     def reset_account(self, *, source: str, now: datetime) -> int:
         with self.lock:
             if self.ledger.active():
-                raise ValueError("Açık Demo pozisyonu ya da bekleyen emir varken Demo hesap "
-                                 "dönemi sıfırlanamaz.")
+                raise ValueError(f"Açık {self.venue.pozisyon} ya da bekleyen emir varken "
+                                 f"{self.venue.ad} hesap dönemi sıfırlanamaz.")
             period_id = self.ledger.reset_period(start_usdt=self.engine.limits.butce_usdt,
                                                  now=now)
             self.ledger.set_json(STATE_NOTIFIED_BREACHES, {})
-            self.audit.write("demo_hesap_sifirlama", "Demo bot bütçesi yeni dönemle başladı",
+            self.audit.write(f"{self.venue.kod}_hesap_sifirlama",
+                             f"{self.venue.ad} bot bütçesi yeni dönemle başladı",
                              kaynak=source, now=now)
             return period_id
 
@@ -1569,10 +1642,11 @@ class DemoExecutor:
                         if last is not None else "Giriş emri yok."))
         self.ledger.update_position(position.id, {
             "durum": state, "aciklama": text, "kapanis_utc": iso(self.clock())})
-        self.audit.write("demo_iptal", f"Demo giriş bitti: {position.sembol} #{position.id} — "
+        self.audit.write(f"{self.venue.kod}_iptal",
+                         f"{self.venue.ad} giriş bitti: {position.sembol} #{position.id} — "
                          f"{text}", kaynak=SOURCE_LOOP, ayrinti={"jeton": position.jeton})
-        self._notify(f"⏹ İPTAL (demo) — {position.sembol} giriş emri @ {position.giris}\n{text}",
-                     KIND_CANCEL)
+        self._notify(f"⏹ İPTAL ({self.venue.etiket}) — {position.sembol} giriş emri @ "
+                     f"{position.giris}\n{text}", KIND_CANCEL)
 
     def _step_filled(self, view: _View) -> None:
         position = view.position
@@ -1585,7 +1659,8 @@ class DemoExecutor:
                               and leg.dec("dolan") > ZERO), None)
             full = entry_leg is not None and entry_leg.durum == "FILLED"
             self._notify(
-                f"✅ {'DOLDU' if full else 'KISMEN DOLDU'} (demo) — {position.sembol}: "
+                f"✅ {'DOLDU' if full else 'KISMEN DOLDU'} ({self.venue.etiket}) — "
+                f"{position.sembol}: "
                 f"{_m(view.econ.alinan_brut)} / {position.miktar} @ "
                 f"{_text(view.econ.ortalama_giris)}\nHedef {position.hedef}, stop {position.stop}."
                 + ("" if full else f"\nKalan giriş en fazla {settings.korumasiz_azami_saniye} sn "
@@ -1594,7 +1669,7 @@ class DemoExecutor:
             )
             view = self._view(position)
         rules = view.rules
-        quote = self.demo_quote(position.sembol)
+        quote = self.venue_quote(position.sembol)
         price_hint = quote.alis if quote is not None else position.dec("stop")
         sellable = self._can_sell(rules, view.sellable, price_hint)
         exits = view.live(ROLE_EXIT)
@@ -1693,7 +1768,8 @@ class DemoExecutor:
         if (now_ms - position.korumasiz_baslangic_ms >= PENDING_ACTIVATION_SECONDS * 1000
                 and position.id not in self._unprotected_notified):
             self._unprotected_notified.add(position.id)
-            self._notify(f"⚠️ KORUMASIZ (demo) — {position.sembol} #{position.id}\n"
+            self._notify(f"⚠️ KORUMASIZ ({self.venue.etiket}) — {position.sembol} "
+                         f"#{position.id}\n"
                          "Elde coin var ama borsada stop yok. Uygulama stop kurmaya ya da "
                          "korumalı satmaya çalışıyor.", KIND_STOP)
         return position
@@ -1716,7 +1792,8 @@ class DemoExecutor:
     def _request_exit(self, position: DemoPosition, reason: str, text: str) -> DemoPosition:
         if position.cikis_istegi:
             return position
-        self.audit.write("demo_cikis_istegi", f"{position.sembol} #{position.id}: {text}",
+        self.audit.write(f"{self.venue.kod}_cikis_istegi",
+                         f"{position.sembol} #{position.id}: {text}",
                          kaynak=SOURCE_LOOP)
         updated = self.ledger.update_position(position.id, {"cikis_istegi": reason,
                                                             "aciklama": text})
@@ -1754,7 +1831,8 @@ class DemoExecutor:
                     self._cool(position.id, ERROR_COOLDOWN_SECONDS)
                 continue
             self._apply_response(response, source="iptal_yaniti")
-            self.audit.write("demo_iptal_emri", f"{position.sembol} #{position.id}: {reason}",
+            self.audit.write(f"{self.venue.kod}_iptal_emri",
+                             f"{position.sembol} #{position.id}: {reason}",
                              kaynak=SOURCE_LOOP, ayrinti={"kimlik": client})
         if position.aciklama != reason:
             self.ledger.update_position(position.id, {"aciklama": reason})
@@ -1766,7 +1844,7 @@ class DemoExecutor:
         if trader is None or rules is None:
             return
         if quote is None:
-            self._note(f"{position.sembol} #{position.id}: Demo fiyatı yok; koruma "
+            self._note(f"{position.sembol} #{position.id}: {self.venue.fiyat} yok; koruma "
                        "birazdan yeniden denenecek")
             self._cool(position.id, ACTION_COOLDOWN_SECONDS)
             return
@@ -1781,7 +1859,8 @@ class DemoExecutor:
             return
         attempt = position.koruma_denemesi + 1
         plan = plan_oco(rules=rules, token=position.jeton, attempt=attempt, target=target,
-                        stop=stop, quantity=view.sellable, settings=self.settings)
+                        stop=stop, quantity=view.sellable, settings=self.settings,
+                        scheme=self.ids)
         if not plan.gecerli:
             self._request_exit(position, EXIT_PROTECT, "Koruma emri filtrelere uymuyor ("
                                + " ".join(plan.sorunlar) + "); korumalı satışla çıkılıyor.")
@@ -1795,11 +1874,12 @@ class DemoExecutor:
             self._leg_failure(position, plan, error, action="koruma")
             return
         self._apply_response(response, source="yanit")
-        self.audit.write("demo_koruma",
+        self.audit.write(f"{self.venue.kod}_koruma",
                          f"{position.sembol} #{position.id}: {plan.params['quantity']} için "
                          f"hedef {target} / stop {stop} kuruldu (deneme {attempt})",
                          kaynak=SOURCE_LOOP)
-        self._notify(f"🛡 KORUMA KURULDU (demo) — {position.sembol} #{position.id}\n"
+        self._notify(f"🛡 KORUMA KURULDU ({self.venue.etiket}) — {position.sembol} "
+                     f"#{position.id}\n"
                      f"{plan.params['quantity']} için hedef {target}, stop {stop}.", KIND_STOP)
 
     def _exit(self, view: _View, quote: Quote | None) -> None:
@@ -1809,13 +1889,15 @@ class DemoExecutor:
         if trader is None or rules is None:
             return
         if quote is None:
-            self._note(f"{position.sembol} #{position.id}: Demo fiyatı yok; çıkış birazdan "
+            self._note(f"{position.sembol} #{position.id}: {self.venue.fiyat} yok; çıkış "
+                       "birazdan "
                        "yeniden denenecek")
             self._cool(position.id, ACTION_COOLDOWN_SECONDS)
             return
         attempt = position.cikis_denemesi + 1
         plan = plan_exit(rules=rules, token=position.jeton, attempt=attempt,
-                         quantity=view.sellable, best_bid=quote.alis, settings=self.settings)
+                         quantity=view.sellable, best_bid=quote.alis, settings=self.settings,
+                         scheme=self.ids)
         if not plan.gecerli:
             self._note(f"{position.sembol} #{position.id} çıkış emri filtrelere uymuyor: "
                        + " ".join(plan.sorunlar))
@@ -1835,10 +1917,11 @@ class DemoExecutor:
         if status != "FILLED":
             self._cool(position.id, 1.0)
             if attempt % EXIT_ALERT_ATTEMPTS == 0:
-                self._notify(f"⚠️ ÇIKIŞ DOLMUYOR (demo) — {position.sembol} #{position.id}\n"
+                self._notify(f"⚠️ ÇIKIŞ DOLMUYOR ({self.venue.etiket}) — {position.sembol} "
+                             f"#{position.id}\n"
                              f"{attempt} denemedir korumalı satış tam dolmadı (en iyi alışın "
                              f"%{self.settings.azami_kayma_yuzde} altına kadar). Denemeye devam "
-                             "ediliyor; Demo defterine bakın.", KIND_STOP)
+                             f"ediliyor; {self.venue.deftere} bakın.", KIND_STOP)
 
     def _leg_failure(self, position: DemoPosition, plan: Plan, error: BaseException, *,
                      action: str) -> None:
@@ -1916,8 +1999,8 @@ class DemoExecutor:
         })
         self._unprotected_notified.discard(position.id)
         self.audit.write(
-            "demo_cikis",
-            f"Demo pozisyon kapandı: {closed.sembol} #{closed.id} "
+            f"{self.venue.kod}_cikis",
+            f"{self.venue.ad} pozisyon kapandı: {closed.sembol} #{closed.id} "
             f"{EXIT_LABELS_TR.get(reason, reason)} @ {closed.cikis_fiyati}, net {_usdt(net)} USDT "
             f"(%{pct:+.3f}); korumasız toplam {closed.korumasiz_toplam_ms / 1000:.1f} sn",
             kaynak=SOURCE_LOOP, ayrinti={"jeton": closed.jeton, "sebep": reason},
@@ -1925,7 +2008,8 @@ class DemoExecutor:
         icon = {EXIT_TARGET: "🎯", EXIT_STOP: "🛑", EXIT_DUST: "🧹"}.get(reason, "↩️")
         kind = {EXIT_TARGET: KIND_TARGET, EXIT_STOP: KIND_STOP}.get(reason, KIND_EXIT)
         self._notify(
-            f"{icon} {EXIT_LABELS_TR.get(reason, reason).upper()} (demo) — {closed.sembol}\n"
+            f"{icon} {EXIT_LABELS_TR.get(reason, reason).upper()} ({self.venue.etiket}) — "
+            f"{closed.sembol}\n"
             f"Ortalama çıkış {closed.cikis_fiyati}, net {_usdt(net)} USDT (%{pct:+.3f})."
             + (f"\nSatılamayan küsurat {_m(dust)} hesapta kaldı." if reason == EXIT_DUST else ""),
             kind,
@@ -1948,7 +2032,7 @@ class DemoExecutor:
         if new:
             self.ledger.set_json(STATE_NOTIFIED_BREACHES, notified)
             self.engine.halt(
-                "Demo: " + "; ".join(item.etiket for item in new),
+                f"{self.venue.ad}: " + "; ".join(item.etiket for item in new),
                 "\n".join(item.aciklama for item in new),
                 now=now, kind=KIND_LIMIT, source=SOURCE_RISK,
             )
@@ -2092,7 +2176,8 @@ class DemoExecutor:
             "kurulu": trader is not None,
             "hazir": reason is None,
             "hazir_degil": reason,
-            "ortam": "Binance Demo Mode (sahte para)",
+            "ortam": self.venue.ortam_tr,
+            "gercek_para": self.venue.gercek_para,
             "adres": None if trader is None else trader.base,
             "saat_farki_ms": None if trader is None else trader.offset_ms,
             "hesap_akisi": None if stream is None else {
@@ -2128,6 +2213,35 @@ class DemoExecutor:
         }
 
 
+class DemoExecutor(OrderExecutor):
+    """Binance Demo Mode hesabının (sahte para) tek sahibi (Faz 5)."""
+
+    venue = DEMO
+
+    def __init__(
+        self,
+        root: Path | str,
+        *,
+        symbols: Sequence[str],
+        engine: PaperEngine,
+        live_market: LiveMarket,
+        demo_market: LiveMarket,
+        notifier: Notifier,
+        trader: DemoTrader | None,
+        public: Any = None,
+        stream_factory: Callable[..., Any] | None = None,
+        book_stream_factory: Callable[..., Any] | None = None,
+        key_problem: str | None = None,
+        clock: Callable[[], datetime] = utc_now,
+        monotonic: Callable[[], float] = time.monotonic,
+    ) -> None:
+        super().__init__(root, symbols=symbols, engine=engine, live_market=live_market,
+                         venue_market=demo_market, notifier=notifier, trader=trader,
+                         public=public, stream_factory=stream_factory,
+                         book_stream_factory=book_stream_factory, key_problem=key_problem,
+                         clock=clock, monotonic=monotonic)
+
+
 def _json_list(items: Sequence[str]) -> str:
     import json
 
@@ -2138,6 +2252,7 @@ __all__ = [
     "DEMO_INFO_FILENAME",
     "DemoAccountView",
     "DemoExecutor",
+    "OrderExecutor",
     "PlaceResult",
     "demo_account_problem",
 ]

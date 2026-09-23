@@ -1,6 +1,7 @@
-"""Faz 5 kabul ölçütü: **kaos testleri** (SPEC.md §10 Faz 5).
+"""Faz 5 kabul ölçütü: **kaos testleri** (SPEC.md §10 Faz 5); Faz 6'dan beri
+her test hem Demo hem canlı yürütücüyle çalışır (``hesap`` parametresi).
 
-Demo yürütücüsü sahte bir Binance'e (``fake_binance.py``) karşı çalışır. Sahte
+Yürütücü sahte bir Binance'e (``fake_binance.py``) karşı çalışır. Sahte
 borsa her isteğin Ed25519 imzasını ve zaman damgasını gerçekten doğrular,
 emirleri eşleştirir, bakiyeyi kilitler ve hesap akışını yayınlar. Testler
 yürütücünün ``tick``'ini elle çağırır; saat de elle ilerletilir.
@@ -30,8 +31,8 @@ from albsat.data.live import LiveMarket
 from albsat.data.store import KlineStore
 from albsat.exchange.keys import SecretText
 from albsat.exchange.signed import StoredKey, generate_keypair
-from albsat.exchange.trading import DemoTrader
-from albsat.execution.executor import DemoExecutor
+from albsat.exchange.trading import DemoTrader, LiveTrader
+from albsat.execution.executor import DemoExecutor, OrderExecutor
 from albsat.execution.ledger import (
     EXIT_DUST,
     EXIT_KILL,
@@ -48,7 +49,8 @@ from albsat.execution.ledger import (
     POS_UNPROTECTED,
     ROLE_STOP,
 )
-from albsat.modes.state import MODE_ADVICE, MODE_DEMO
+from albsat.execution.live import LiveExecutor
+from albsat.modes.state import MODE_ADVICE, MODE_DEMO, MODE_SEMI
 from albsat.notify.base import MemoryNotifier
 from albsat.paper.engine import OrderMeta, PaperEngine
 from albsat.risk.limits import RiskLimits
@@ -93,12 +95,16 @@ class Rig:
     fake: FakeBinance
     engine: PaperEngine
     notifier: MemoryNotifier
-    executor: DemoExecutor
+    executor: OrderExecutor
     streams: list[FakeUserStream] = field(default_factory=list)
 
     @property
     def stream(self) -> FakeUserStream:
         return self.streams[-1]
+
+    @property
+    def prefix(self) -> str:
+        return self.executor.ids.prefix
 
     def tick(self, times: int = 1, seconds: float = 1.0) -> None:
         for _ in range(times):
@@ -118,7 +124,7 @@ class Rig:
 
 
 def build(root: Path, *, clock: Clock | None = None, fake: FakeBinance | None = None,
-          usdt: Decimal = START_USDT, bootstrap: bool = True) -> Rig:
+          usdt: Decimal = START_USDT, bootstrap: bool = True, hesap: str = "demo") -> Rig:
     clock = clock or Clock()
     fake = fake or FakeBinance(clock_ms=clock.ms, public_pem=PUBLIC_PEM, api_key=API_KEY,
                                usdt=usdt)
@@ -134,27 +140,52 @@ def build(root: Path, *, clock: Clock | None = None, fake: FakeBinance | None = 
         streams.append(stream)
         return stream
 
-    trader = DemoTrader(KEY, opener=fake, time_ms=clock.local_ms)
-    executor = DemoExecutor(
-        root, symbols=(BTC,), engine=engine,
-        live_market=LiveMarket(KlineStore(root), clock=clock.now),
-        demo_market=LiveMarket(KlineStore(root), clock=clock.now),
-        notifier=notifier, trader=trader, public=fake, stream_factory=stream_factory,
-        book_stream_factory=lambda on_event: FakeBookStream(fake, on_event),
-        clock=clock.now, monotonic=clock.monotonic,
-    )
+    executor: OrderExecutor
+    if hesap == "demo":
+        executor = DemoExecutor(
+            root, symbols=(BTC,), engine=engine,
+            live_market=LiveMarket(KlineStore(root), clock=clock.now),
+            demo_market=LiveMarket(KlineStore(root), clock=clock.now),
+            notifier=notifier, trader=DemoTrader(KEY, opener=fake, time_ms=clock.local_ms),
+            public=fake, stream_factory=stream_factory,
+            book_stream_factory=lambda on_event: FakeBookStream(fake, on_event),
+            clock=clock.now, monotonic=clock.monotonic,
+        )
+    else:
+        # Canlıda emir defteri canlı piyasanın kendisi; onu canlı döngünün akışı besler.
+        live_market = LiveMarket(KlineStore(root), clock=clock.now)
+        fake.book_listeners.append(live_market.on_book)
+        executor = LiveExecutor(
+            root, symbols=(BTC,), engine=engine, live_market=live_market, notifier=notifier,
+            trader=LiveTrader(KEY, opener=fake, time_ms=clock.local_ms,
+                              monotonic=clock.monotonic),
+            public=fake, stream_factory=stream_factory, clock=clock.now,
+            monotonic=clock.monotonic,
+        )
+        # Kaos testleri Demo ile aynı büyüklükte emir açsın: tavan bütçe kadar. Tavanın
+        # kendisi tests/test_canli.py'de sınanıyor.
+        executor.update_cap(engine.limits.butce_usdt, source=SOURCE_UI)
     rig = Rig(root, clock, fake, engine, notifier, executor, streams)
     if bootstrap:
         assert executor.bootstrap(), executor.health.son_hata or executor.health.hazirlik_sorunu
         bid, ask = fake.book[BTC]
         fake.set_book(BTC, bid, ask)
-        engine.set_mode(BTC, MODE_DEMO, source=SOURCE_UI, now=clock.now())
+        if hesap == "demo":
+            engine.set_mode(BTC, MODE_DEMO, source=SOURCE_UI, now=clock.now())
+        else:
+            engine.set_mode(BTC, MODE_SEMI, source=SOURCE_UI, now=clock.now(),
+                            allow_live=True)
     return rig
 
 
+@pytest.fixture(params=["demo", "canli"])
+def hesap(request) -> str:  # noqa: ANN001
+    return str(request.param)
+
+
 @pytest.fixture
-def rig(tmp_path) -> Rig:
-    return build(tmp_path)
+def rig(tmp_path, hesap) -> Rig:
+    return build(tmp_path, hesap=hesap)
 
 
 def placed(rig: Rig, **changes: Any):  # noqa: ANN201
@@ -186,7 +217,7 @@ def check_invariants(rig: Rig) -> None:
     # 3) Kapanan pozisyonların dolumları eksiksiz (borsadaki her albsat dolumu kayıtta).
     recorded = {(fill.sembol, fill.islem_kimligi) for position in ledger.recent(1000)
                 for fill in ledger.fills(position.id)}
-    ours = {order.order_id for order in fake.orders_by_prefix()}
+    ours = {order.order_id for order in fake.orders_by_prefix(rig.prefix)}
     for trade in fake.trades:
         if trade["orderId"] in ours:
             owner = next(order for order in fake.orders.values()
@@ -220,15 +251,15 @@ def test_hedefe_ulasan_islem_kapanir_ve_sonuc_borsayla_tutar(rig):
     position = placed(rig)
     fake = rig.fake
     assert len(fake.posts("/api/v3/orderList/otoco")) == 1
-    entry = fake.order(f"albsat-demo-{position.jeton}-G1")
+    entry = fake.order(f"{rig.prefix}{position.jeton}-G1")
     assert entry.type == "LIMIT_MAKER" and entry.side == "BUY"
-    assert fake.order(f"albsat-demo-{position.jeton}-S1").status == "PENDING_NEW"
+    assert fake.order(f"{rig.prefix}{position.jeton}-S1").status == "PENDING_NEW"
 
     fill_entry(rig, position.id)
     rig.tick()
     current = rig.position(position.id)
     assert current.durum == POS_PROTECTED, current.aciklama
-    assert "DOLDU (demo)" in rig.texts()
+    assert f"DOLDU ({rig.executor.venue.etiket})" in rig.texts()
 
     fake.move(BTC, "60900")
     rig.tick()
@@ -266,7 +297,7 @@ def test_giris_gecerlilik_suresinde_dolmazsa_iptal_edilir(rig):
     rig.tick(2)
     current = rig.position(position.id)
     assert current.durum == POS_CANCELLED
-    entry = rig.fake.order(f"albsat-demo-{position.jeton}-G1")
+    entry = rig.fake.order(f"{rig.prefix}{position.jeton}-G1")
     assert entry.status == "CANCELED"
     assert rig.fake.balances["USDT"] == [D("5000"), D("0")]
     check_invariants(rig)
@@ -288,11 +319,11 @@ def test_kismi_giris_dolumu_suresi_bitince_kalani_iptal_edip_dolani_korur(rig):
     check_invariants(rig)
     # 19 saniye: hâlâ bekliyor; giriş borsada canlı.
     rig.tick(18)
-    assert rig.fake.order(f"albsat-demo-{position.jeton}-G1").status == "PARTIALLY_FILLED"
+    assert rig.fake.order(f"{rig.prefix}{position.jeton}-G1").status == "PARTIALLY_FILLED"
     # 20. saniye: liste iptal, dolan kısım için yeni OCO.
     rig.tick(3)
     current = rig.position(position.id)
-    assert rig.fake.order(f"albsat-demo-{position.jeton}-G1").status == "CANCELED"
+    assert rig.fake.order(f"{rig.prefix}{position.jeton}-G1").status == "CANCELED"
     assert current.durum == POS_PROTECTED, current.aciklama
     oco = rig.fake.posts("/api/v3/orderList/oco")
     assert len(oco) == 1
@@ -327,7 +358,7 @@ def test_hedef_kismen_dolunca_stop_duser_kalan_yeniden_korunur(rig):
     rig.fake.move(BTC, "60900", qty="0.00060")
     rig.tick()
     current = rig.position(position.id)
-    assert rig.fake.order(f"albsat-demo-{position.jeton}-S1").status == "EXPIRED"
+    assert rig.fake.order(f"{rig.prefix}{position.jeton}-S1").status == "EXPIRED"
     assert current.durum == POS_UNPROTECTED
     rig.fake.set_book(BTC, "60500", "60500.01")
     rig.tick(22)
@@ -466,16 +497,16 @@ def test_akis_kopukken_dolumlar_rest_ile_bulunur(rig):
     check_invariants(rig)
 
 
-def test_uygulama_kismi_dolum_ortasinda_coker_yeniden_acilinca_devam_eder(tmp_path):
-    first = build(tmp_path)
+def test_uygulama_kismi_dolum_ortasinda_coker_yeniden_acilinca_devam_eder(tmp_path, hesap):
+    first = build(tmp_path, hesap=hesap)
     position = placed(first)
     first.stream.drop()  # uygulama kapandı: olaylar kimseye ulaşmıyor
     first.fake.move(BTC, "60000", "0.00050")
     first.clock.advance(120)
     # Yeniden açılış: aynı veritabanı, aynı borsa, yeni yürütücü.
-    second = build(tmp_path, clock=first.clock, fake=first.fake)
+    second = build(tmp_path, clock=first.clock, fake=first.fake, hesap=hesap)
     current = second.position(position.id)
-    assert D(second.executor.ledger.leg(f"albsat-demo-{position.jeton}-G1").dolan) \
+    assert D(second.executor.ledger.leg(f"{second.prefix}{position.jeton}-G1").dolan) \
         == D("0.00050")
     assert second.executor.ledger.fills(position.id)
     second.tick(2)
@@ -538,7 +569,7 @@ def test_418_ip_engelinde_yeni_emir_acilmaz(rig):
 
 
 def test_limit_maker_reddinde_kural_emri_en_iyi_alisa_cekilir(rig):
-    # Demo defteri akıştan habersiz aşağı indi: giriş artık hemen eşleşir.
+    # Defter akıştan habersiz aşağı indi: giriş artık hemen eşleşir.
     rig.fake.set_book(BTC, "59989.99", "59990.00", publish=False)
     result = rig.place(reprice=True)
     assert result.pozisyon is not None, result.mesaj
@@ -560,15 +591,15 @@ def test_limit_maker_reddinde_elle_emir_yeniden_fiyatlanmaz(rig):
     assert "hemen eşleşeceği" in result.mesaj
 
 
-def test_demo_hesabinda_bakiye_azsa_emir_bakiyeyle_sinirlanir(tmp_path):
-    rig = build(tmp_path, usdt=D("20"))
+def test_hesapta_bakiye_azsa_emir_bakiyeyle_sinirlanir(tmp_path, hesap):
+    rig = build(tmp_path, usdt=D("20"), hesap=hesap)
     position = placed(rig)
     assert D(position.tutar_usdt) <= D("20")
     check_invariants(rig)
 
 
-def test_demo_hesabinda_bakiye_yetmezse_emir_acilmaz(tmp_path):
-    rig = build(tmp_path, usdt=D("4"))
+def test_hesapta_bakiye_yetmezse_emir_acilmaz(tmp_path, hesap):
+    rig = build(tmp_path, usdt=D("4"), hesap=hesap)
     result = rig.place()
     assert result.pozisyon is None
     assert not rig.fake.posts()
@@ -581,7 +612,7 @@ def test_suresi_dolan_stop_yeniden_kurulur(rig):
     position = placed(rig)
     fill_entry(rig, position.id)
     rig.tick()
-    rig.fake.expire(f"albsat-demo-{position.jeton}-S1")
+    rig.fake.expire(f"{rig.prefix}{position.jeton}-S1")
     rig.tick(2)
     current = rig.position(position.id)
     assert current.durum == POS_PROTECTED, current.aciklama
@@ -600,7 +631,7 @@ def test_acil_durdur_bekleyen_girisi_borsada_iptal_eder(rig):
     rig.tick()
     assert rig.engine.modes.get(BTC) == MODE_ADVICE
     assert rig.position(position.id).durum == POS_CANCELLED
-    assert rig.fake.order(f"albsat-demo-{position.jeton}-G1").status == "CANCELED"
+    assert rig.fake.order(f"{rig.prefix}{position.jeton}-G1").status == "CANCELED"
     check_invariants(rig)
 
 
@@ -615,7 +646,7 @@ def test_acil_durdur_kapat_acik_pozisyonu_korumali_satar(rig):
     rig.tick(3)
     closed = rig.position(position.id)
     assert closed.durum == POS_CLOSED and closed.cikis_sebebi == EXIT_KILL
-    assert rig.fake.order(f"albsat-demo-{position.jeton}-S1").status == "CANCELED"
+    assert rig.fake.order(f"{rig.prefix}{position.jeton}-S1").status == "CANCELED"
     check_invariants(rig)
 
 
@@ -628,7 +659,7 @@ def test_acil_durdur_kapatmadan_stop_ve_hedef_yerinde_kalir(rig):
     rig.executor.kill_switch(close_positions=False, source=SOURCE_UI)
     rig.tick(2)
     assert rig.position(position.id).durum == POS_PROTECTED
-    assert rig.fake.order(f"albsat-demo-{position.jeton}-S1").status == "NEW"
+    assert rig.fake.order(f"{rig.prefix}{position.jeton}-S1").status == "NEW"
 
 
 def test_azami_tutma_suresi_dolunca_kapanir(rig):
@@ -655,10 +686,10 @@ def test_elle_verilen_emirlere_dokunulmaz(rig):
 
 
 def test_kayitta_olmayan_albsat_alisi_iptal_edilir_satisi_birakilir(rig):
-    buy = rig.fake.add_manual_order(BTC, "albsat-demo-yetim00-G1", "BUY", "50000.00",
+    buy = rig.fake.add_manual_order(BTC, f"{rig.prefix}yetim00-G1", "BUY", "50000.00",
                                     "0.00100")
     rig.fake.balances["BTC"] = [D("0.01"), D("0")]
-    sell = rig.fake.add_manual_order(BTC, "albsat-demo-yetim00-H1", "SELL", "70000.00",
+    sell = rig.fake.add_manual_order(BTC, f"{rig.prefix}yetim00-H1", "SELL", "70000.00",
                                      "0.00100")
     rig.executor.reconcile("test", full=True)
     assert buy.status == "CANCELED"
@@ -668,7 +699,7 @@ def test_kayitta_olmayan_albsat_alisi_iptal_edilir_satisi_birakilir(rig):
 # --- risk sınırı -------------------------------------------------------------------------------
 
 
-def test_gunluk_zarar_siniri_asilinca_demo_durur(rig):
+def test_gunluk_zarar_siniri_asilinca_otomatik_islem_durur(rig):
     values = RiskLimits().to_json()
     values.update({"gunluk_max_zarar_yuzde": "2.0", "kayip_sonrasi_soguma_mum": 0})
     rig.engine.limit_store.write(RiskLimits.from_json(values))

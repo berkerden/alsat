@@ -16,13 +16,17 @@ cd "$(dirname "$0")" || exit 1
 # internete çıkmaz, veriyi diskteki ./veri klasöründen okur.
 # "bash kurulum.sh teshis" ayrıca maliyetsiz teşhis turunu da çalıştırır.
 # "bash kurulum.sh arayuz" tarama yapmaz; kurulumu tamamlayıp arayüzü açar
-# (yalnızca 127.0.0.1; canlı hesaba emir göndermez; kâğıt işlem yereldir, Demo
-# işlem yalnızca Binance Demo Mode'a gider).
+# (yalnızca 127.0.0.1; kâğıt işlem yereldir, Demo işlem yalnızca Binance Demo
+# Mode'a gider; canlı hesaba yalnızca Canlı işlem sekmesinde Yarı/Tam Otomatik'e
+# elle alınmış coinler için emir gider).
 # "bash kurulum.sh telegram" Telegram bildirimlerini kurar.
 # "bash kurulum.sh anahtar" yalnızca okuma izinli Binance API anahtarını kurar
 # ve hesaba özel komisyonu ölçer; "komisyon" yalnızca yeniden ölçer.
 # "bash kurulum.sh demo-anahtar" Binance Demo Mode (sahte para) anahtarını kurar;
 # "demo-sina" Demo'ya dolmayacak bir sınama emri gönderip iptal eder.
+# "bash kurulum.sh canli-anahtar" canlı işlem anahtarını kurar ve yalnızca okur
+# (izinler, hesap, komisyon); "canli-sina" canlı hesaba dolmayacak bir sınama
+# emri gönderip iptal eder (GERÇEK hesap; göndermeden önce coin adı sorulur).
 SADECE_TARAMA=0
 TESHIS=0
 ARAYUZ=0
@@ -32,11 +36,11 @@ case "${1:-}" in
   tarama) SADECE_TARAMA=1 ;;
   teshis) SADECE_TARAMA=1; TESHIS=1 ;;
   arayuz) ARAYUZ=1 ;;
-  telegram|anahtar|komisyon|demo-anahtar|demo-sina) TEK_ADIM="$1" ;;
+  telegram|anahtar|komisyon|demo-anahtar|demo-sina|canli-anahtar|canli-sina) TEK_ADIM="$1" ;;
   *)
     hata "Bilinmeyen seçenek: $1"
     printf 'Kullanılabilecekler: tarama, teshis, arayuz, telegram, anahtar, komisyon,\n'
-    printf '                     demo-anahtar, demo-sina\n'
+    printf '                     demo-anahtar, demo-sina, canli-anahtar, canli-sina\n'
     printf 'Seçeneksiz çalıştırmak için:  bash kurulum.sh\n'
     exit 1
     ;;
@@ -148,6 +152,23 @@ if [ "$TEK_ADIM" = "demo-sina" ]; then
   printf "   Demo'ya dolmayacak küçük bir alış emri gönderilir, izlenir ve iptal edilir.\n"
   printf '   Emir göndermeden önce size sorulur.\n\n'
   python -m albsat.cli.demo --sina
+  exit $?
+fi
+
+if [ "$TEK_ADIM" = "canli-anahtar" ]; then
+  baslik "4/$ADIM_SAYISI  Binance CANLI işlem anahtarı (gerçek hesap)"
+  printf '   Bu adım emir göndermez: anahtarı kurar, izinlerini, hesabı ve komisyonu okur.\n'
+  printf "   Anahtarın özel yarısı Mac'inizin Anahtar Zinciri'nde kalır.\n"
+  printf '   Para çekme izni açık bir anahtar kullanılmaz.\n\n'
+  python -m albsat.cli.canli
+  exit $?
+fi
+
+if [ "$TEK_ADIM" = "canli-sina" ]; then
+  baslik "4/$ADIM_SAYISI  Canlı hesap uçtan uca sınaması (GERÇEK hesap)"
+  printf '   Canlı hesaba dolmaması beklenen küçük bir alış emri gönderilir, izlenir ve\n'
+  printf '   birkaç saniye içinde iptal edilir. Göndermeden önce coin adını yazmanız istenir.\n\n'
+  python -m albsat.cli.canli --sina
   exit $?
 fi
 

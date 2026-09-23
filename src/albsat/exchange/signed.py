@@ -241,6 +241,57 @@ def restriction_problems(payload: Mapping[str, Any]) -> tuple[list[str], list[st
     return blocking, warnings
 
 
+#: Canlı işlem anahtarında açık olmaması gereken izinler (SPEC §5: yalnızca okuma
+#: ve Spot işlem; para çekme kesinlikle kapalı, margin/futures kapalı).
+LIVE_FORBIDDEN: tuple[tuple[str, str], ...] = (
+    ("enableWithdrawals", "Para çekme"),
+    ("enableMargin", "Margin (borç, geri ödeme, transfer)"),
+    ("enableFutures", "Vadeli işlem (futures)"),
+    ("enableVanillaOptions", "Opsiyon"),
+    ("enablePortfolioMarginTrading", "Portföy margin"),
+    ("enableInternalTransfer", "Hesaplar arası transfer"),
+    ("permitsUniversalTransfer", "Evrensel transfer"),
+)
+
+
+def live_key_problems(payload: Mapping[str, Any]) -> tuple[list[str], list[str]]:
+    """Canlı **işlem** anahtarı için (engelleyici sorunlar, uyarılar).
+
+    Faz 4'ün ``restriction_problems``'ı salt okuma anahtarı içindir (işlem iznini
+    uyarı sayar). Burada tersi: Spot işlem izni **gerekir**; para çekme, margin,
+    vadeli işlem, opsiyon ve transfer izinlerinden biri açıksa anahtar
+    kullanılmaz. Karar ``apiRestrictions`` yanıtıyla verilir; hesabın
+    ``canWithdraw`` bayrağına bakılmaz (o anahtarın izni değildir).
+    """
+    blocking: list[str] = []
+    warnings: list[str] = []
+    if "enableWithdrawals" not in payload:
+        blocking.append("Anahtarın izinleri okunamadı; Binance beklenen yanıtı vermedi.")
+        return blocking, warnings
+    for key, label in LIVE_FORBIDDEN:
+        if payload.get(key):
+            if key == "enableWithdrawals":
+                blocking.append("Para çekme izni AÇIK. Uygulama bu anahtarla emir göndermez; "
+                                "Binance'te anahtarın 'Para çekme' iznini kapatın.")
+            else:
+                blocking.append(f"{label} izni açık. Bu uygulama yalnızca Spot kullanır; "
+                                "Binance'te bu izni kapatın.")
+    if not payload.get("enableReading"):
+        blocking.append("Okuma izni kapalı; bakiye ve emirler okunamaz.")
+    if not payload.get("enableSpotAndMarginTrading"):
+        blocking.append("Spot işlem izni kapalı; emir gönderilemez. Binance'te anahtarın "
+                        "'Spot ve Margin işlemlerini etkinleştir' iznini açın.")
+    if not payload.get("ipRestrict"):
+        warnings.append(
+            "IP kısıtlaması yok: anahtar her IP adresinden kullanılabilir. Özel yarı bu "
+            "Mac'in Anahtar Zinciri'nde durduğu için anahtarı kullanmak için bu Mac'e erişmek "
+            "gerekir; yine de Binance işlem izinli anahtarlarda güvenilir IP kısıtını "
+            "öneriyor. Ev IP'niz değişirse kısıtlı anahtar çalışmayı bırakır (emir "
+            "gönderilemez, borsadaki stop ve hedef yerinde kalır)."
+        )
+    return blocking, warnings
+
+
 __all__ = [
     "ACCOUNT_API_KEY",
     "ACCOUNT_PRIVATE",
@@ -249,7 +300,9 @@ __all__ = [
     "SignedReader",
     "SignedRequestError",
     "StoredKey",
+    "LIVE_FORBIDDEN",
     "generate_keypair",
+    "live_key_problems",
     "load_key",
     "public_pem_of",
     "restriction_problems",

@@ -1,9 +1,11 @@
-"""İmzalı Binance **Demo Mode** istemcisi: emir gönderir, iptal eder, sorgular.
+"""İmzalı Binance emir istemcileri: ``DemoTrader`` (Demo Mode, sahte para) ve
+``LiveTrader`` (canlı hesap, **gerçek para**).
 
-Faz 5'in borsaya dokunan tek sınıfı ``DemoTrader``'dır. Faz 4'ün salt okuyan
-``SignedReader``'ı değiştirilmedi; emir yöntemleri ona eklenmedi. İki sınıfın
-izin listeleri ayrıdır ve ikisi de listede olmayan bir adresi istek
-göndermeden reddeder.
+Faz 5'in borsaya dokunan tek sınıfı ``DemoTrader``'dı; Faz 6 aynı çekirdeği
+(``SignedTrader``) paylaşan ayrı bir ``LiveTrader`` ekledi. İki sınıfın
+ortamı, adresi, emir kimliği öneki ve izin listesi ayrıdır; biri ötekinin
+yerine kurulamaz. Faz 4'ün salt okuyan ``SignedReader``'ı değiştirilmedi.
+Hepsi listede olmayan bir adresi istek göndermeden reddeder.
 
 **Neden resmi SDK değil, kendi küçük istemcimiz?**
 
@@ -19,14 +21,28 @@ göndermeden reddeder.
    kaos testleri gerçek istek biçimini ve imzayı doğrular.
 4. Yeni bağımlılık yok.
 
-**Yalnızca Demo Mode.** Kurucu ``Environment.DEMO`` dışındaki her ortamı
-reddeder ve adresi kendisi ``endpoints.py``'den alır; dışarıdan adres
-verilemez. Faz 6'da canlı ortam ayrı bir kararla açılacak.
+**Ortam sınıfa bağlıdır.** ``DemoTrader`` yalnızca ``Environment.DEMO``,
+``LiveTrader`` yalnızca ``Environment.LIVE`` ile kurulur; adresi kendisi
+``endpoints.py``'den alır, dışarıdan adres verilemez.
 
 **Yalnızca kendi emirleri.** Gönderilen ve iptal edilen her emrin kimliği
-``albsat-demo-`` ile başlamak zorundadır. Kullanıcının elle verdiği emirler
-bu önekle başlamadığı için bu sınıf onları iptal edemez. Bütün açık emirleri
-tek seferde silen ``DELETE /api/v3/openOrders`` bilerek listede yok.
+sınıfın önekiyle (``albsat-demo-`` ya da ``albsat-canli-``) başlamak
+zorundadır. Kullanıcının elle verdiği emirler bu önekle başlamadığı için bu
+sınıflar onları iptal edemez. Bütün açık emirleri tek seferde silen
+``DELETE /api/v3/openOrders`` bilerek listede yok.
+
+**Canlıda iki ek kilit (``LiveTrader``).**
+
+1. *Anahtar izni.* Yeni giriş emri (OTOCO) ancak anahtarın izinleri son bir
+   saat içinde ``/sapi/v1/account/apiRestrictions`` ile okunmuş ve para
+   çekme izni **kapalı** bulunmuşsa gider. ``GET /api/v3/account``'taki
+   ``canWithdraw`` hesabın bayrağıdır, anahtarın izni değildir; ona
+   bakılmaz. Koruma emirleri (OCO, korumalı çıkış) ve iptaller bu kilide
+   takılmaz: elde coin varken stop koymak ya da bekleyen alışı iptal etmek
+   riski azaltır, engellenmemelidir.
+2. *Emir tavanı.* Giriş emrinin tutarı (fiyat × miktar) yürütücünün verdiği
+   tavanı aşarsa istek gönderilmez. Tavan risk motorunda da uygulanır; bu,
+   aynı kuralın borsaya en yakın yerdeki ikinci kopyasıdır.
 
 **Sonucu bilinmeyen istek.** Emir gönderen ya da iptal eden bir istekte ağ
 zaman aşımı, HTTP 5xx ya da ``-1006``/``-1007`` gelirse borsa isteği işlemiş
@@ -46,7 +62,8 @@ import urllib.parse
 import urllib.request
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import Any
+from decimal import Decimal, InvalidOperation
+from typing import Any, ClassVar
 
 from albsat.exchange.endpoints import Environment, endpoints_for
 from albsat.exchange.http import USER_AGENT
@@ -54,11 +71,18 @@ from albsat.exchange.ratelimit import RequestBudget, parse_retry_after
 from albsat.exchange.signed import RECV_WINDOW_MS, StoredKey, sign
 
 #: Bu uygulamanın Demo Mode emirlerinin kimlik öneki.
-CLIENT_PREFIX = "albsat-demo-"
+DEMO_PREFIX = "albsat-demo-"
+#: Bu uygulamanın canlı hesap (gerçek para) emirlerinin kimlik öneki.
+LIVE_PREFIX = "albsat-canli-"
+#: Faz 5 adı (Demo).
+CLIENT_PREFIX = DEMO_PREFIX
 
 #: Demo anahtarının Anahtar Zinciri kaydı. Faz 4'ün salt okuma anahtarından
 #: (``albsat-binance``) ayrıdır; iki anahtar birbirinin yerine kullanılamaz.
 KEYCHAIN_SERVICE_DEMO = "albsat-binance-demo"
+#: Canlı işlem anahtarının Anahtar Zinciri kaydı (Faz 6). Salt okuma ve Demo
+#: anahtarlarından ayrıdır.
+KEYCHAIN_SERVICE_LIVE = "albsat-binance-canli"
 
 #: İzin verilen imzalı istekler ve ağırlıkları (``rest-api.md``).
 ALLOWED: Mapping[tuple[str, str], int] = {
@@ -74,6 +98,15 @@ ALLOWED: Mapping[tuple[str, str], int] = {
     ("DELETE", "/api/v3/order"): 1,
     ("DELETE", "/api/v3/orderList"): 1,
 }
+
+#: Canlıda ek olarak anahtarın izinleri okunur (``/sapi/``, ağırlık 1).
+PERMISSIONS_PATH = "/sapi/v1/account/apiRestrictions"
+ALLOWED_LIVE: Mapping[tuple[str, str], int] = {**ALLOWED, ("GET", PERMISSIONS_PATH): 1}
+
+#: Canlıda yeni giriş emri için anahtar izinlerinin en fazla bu kadar eski olması.
+PERMISSION_MAX_AGE_SECONDS = 3600.0
+#: Emir tavanı denetiminde yuvarlamaya bırakılan pay.
+CAP_TOLERANCE = Decimal("1.01")
 
 #: Sonucu bilinmeyen sayılan hata kodları (``errors.md``).
 UNKNOWN_CODES = frozenset({-1006, -1007})
@@ -122,11 +155,11 @@ class OrderCounts:
     zaman: float | None
 
 
-def _require_prefix(name: str, value: object) -> str:
+def _require_prefix(name: str, value: object, prefix: str = DEMO_PREFIX) -> str:
     text = str(value or "")
-    if not text.startswith(CLIENT_PREFIX):
+    if not text.startswith(prefix):
         raise TradingRefused(
-            f"{name} '{text}' bu uygulamanın öneki ({CLIENT_PREFIX}) ile başlamıyor; "
+            f"{name} '{text}' bu hesabın öneki ({prefix}) ile başlamıyor; "
             "başka birinin emrine dokunulmaz."
         )
     if len(text) > 36:
@@ -140,27 +173,37 @@ def _require(params: Mapping[str, Any], name: str, allowed: tuple[str, ...]) -> 
         raise TradingRefused(f"{name}={value!r} izinli değil (izinli: {', '.join(allowed)}).")
 
 
-class DemoTrader:
-    """Binance Demo Mode'a imzalı istek gönderen tek sınıf."""
+class SignedTrader:
+    """İmzalı emir istemcisinin çekirdeği. Doğrudan kurulmaz; ``DemoTrader`` ya da
+    ``LiveTrader`` kullanılır."""
+
+    ENVIRONMENT: ClassVar[Environment]
+    PREFIX: ClassVar[str]
+    REAL_MONEY: ClassVar[bool]
+    ALLOWED: ClassVar[Mapping[tuple[str, str], int]] = ALLOWED
+    NAME: ClassVar[str] = "SignedTrader"
 
     def __init__(
         self,
         key: StoredKey,
         *,
-        environment: Environment = Environment.DEMO,
+        environment: Environment | None = None,
         budget: RequestBudget | None = None,
         opener: Callable[..., Any] = urllib.request.urlopen,
         time_ms: Callable[[], int] = lambda: int(time.time() * 1000),
         timeout: float = 15.0,
     ) -> None:
-        if environment is not Environment.DEMO:
+        expected = self.ENVIRONMENT
+        environment = expected if environment is None else environment
+        if environment is not expected:
             raise TradingRefused(
-                "Emir gönderimi bu fazda yalnızca Binance Demo Mode'da açık "
+                f"{self.NAME} yalnızca '{expected.value}' ortamında kurulur "
                 f"(istenen ortam: {environment.value})."
             )
         endpoints = endpoints_for(environment)
-        if endpoints.real_money:  # pragma: no cover - endpoints.py değişirse yakalansın
-            raise TradingRefused("Demo ortamı gerçek para taşıyor görünüyor; durduruldu.")
+        if endpoints.real_money is not self.REAL_MONEY:  # pragma: no cover - endpoints.py
+            raise TradingRefused(
+                f"{self.NAME}: ortamın gerçek para bilgisi beklenenle uyuşmuyor; durduruldu.")
         self._key = key
         self.base = endpoints.rest.removesuffix("/api").rstrip("/")
         self.budget = budget or RequestBudget()
@@ -172,7 +215,21 @@ class DemoTrader:
         self._counts = OrderCounts(None, None, None)
 
     def __repr__(self) -> str:
-        return f"DemoTrader({self.base}, <anahtar gizli>)"
+        return f"{self.NAME}({self.base}, <anahtar gizli>)"
+
+    @property
+    def prefix(self) -> str:
+        return self.PREFIX
+
+    @property
+    def real_money(self) -> bool:
+        return self.REAL_MONEY
+
+    def _own(self, name: str, value: object) -> str:
+        return _require_prefix(name, value, self.PREFIX)
+
+    def _check_entry(self, params: Mapping[str, Any]) -> None:
+        """Giriş emri gönderilmeden önceki ek denetim (canlıda izin ve tavan)."""
 
     # --- saat ------------------------------------------------------------
 
@@ -251,7 +308,7 @@ class DemoTrader:
         return self._send(method, path, params)
 
     def _send(self, method: str, path: str, params: Mapping[str, Any] | None) -> Any:
-        weight = ALLOWED.get((method, path))
+        weight = self.ALLOWED.get((method, path))
         if weight is None:
             raise TradingRefused(f"İzin listesinde olmayan istek: {method} {path}")
         values = {key: value for key, value in (params or {}).items() if value is not None}
@@ -304,14 +361,12 @@ class DemoTrader:
     def query_order(self, symbol: str, client_id: str) -> dict[str, Any]:
         result = self.request("GET", "/api/v3/order",
                               {"symbol": symbol,
-                               "origClientOrderId": _require_prefix("origClientOrderId",
-                                                                    client_id)})
+                               "origClientOrderId": self._own("origClientOrderId", client_id)})
         return result if isinstance(result, dict) else {}
 
     def query_order_list(self, list_client_id: str) -> dict[str, Any]:
         result = self.request("GET", "/api/v3/orderList",
-                              {"origClientOrderId": _require_prefix("origClientOrderId",
-                                                                    list_client_id)})
+                              {"origClientOrderId": self._own("origClientOrderId", list_client_id)})
         return result if isinstance(result, dict) else {}
 
     def open_orders(self, symbol: str) -> list[dict[str, Any]]:
@@ -334,7 +389,8 @@ class DemoTrader:
         _require(params, "pendingBelowType", ("STOP_LOSS", "STOP_LOSS_LIMIT"))
         for name in ("listClientOrderId", "workingClientOrderId", "pendingAboveClientOrderId",
                      "pendingBelowClientOrderId"):
-            _require_prefix(name, params.get(name))
+            self._own(name, params.get(name))
+        self._check_entry(params)
         payload = dict(params)
         payload["newOrderRespType"] = "FULL"
         result = self.request("POST", "/api/v3/orderList/otoco", payload)
@@ -346,7 +402,7 @@ class DemoTrader:
         _require(params, "aboveType", ("LIMIT_MAKER",))
         _require(params, "belowType", ("STOP_LOSS", "STOP_LOSS_LIMIT"))
         for name in ("listClientOrderId", "aboveClientOrderId", "belowClientOrderId"):
-            _require_prefix(name, params.get(name))
+            self._own(name, params.get(name))
         payload = dict(params)
         payload["newOrderRespType"] = "FULL"
         result = self.request("POST", "/api/v3/orderList/oco", payload)
@@ -363,7 +419,7 @@ class DemoTrader:
         _require(params, "side", ("SELL",))
         _require(params, "type", ("LIMIT",))
         _require(params, "timeInForce", ("IOC",))
-        _require_prefix("newClientOrderId", params.get("newClientOrderId"))
+        self._own("newClientOrderId", params.get("newClientOrderId"))
         payload = dict(params)
         payload["newOrderRespType"] = "FULL"
         result = self.request("POST", "/api/v3/order", payload)
@@ -372,23 +428,161 @@ class DemoTrader:
     def cancel_order(self, symbol: str, client_id: str) -> dict[str, Any]:
         result = self.request("DELETE", "/api/v3/order",
                               {"symbol": symbol,
-                               "origClientOrderId": _require_prefix("origClientOrderId",
-                                                                    client_id)})
+                               "origClientOrderId": self._own("origClientOrderId", client_id)})
         return result if isinstance(result, dict) else {}
 
     def cancel_order_list(self, symbol: str, list_client_id: str) -> dict[str, Any]:
         result = self.request("DELETE", "/api/v3/orderList",
                               {"symbol": symbol,
-                               "listClientOrderId": _require_prefix("listClientOrderId",
-                                                                    list_client_id)})
+                               "listClientOrderId": self._own("listClientOrderId", list_client_id)})
         return result if isinstance(result, dict) else {}
+
+
+class DemoTrader(SignedTrader):
+    """Binance Demo Mode'a (sahte para) imzalı istek gönderen sınıf."""
+
+    ENVIRONMENT = Environment.DEMO
+    PREFIX = DEMO_PREFIX
+    REAL_MONEY = False
+    NAME = "DemoTrader"
+
+
+@dataclass(frozen=True)
+class PermissionState:
+    """Canlı anahtarın son okunan izinleri (``apiRestrictions``)."""
+
+    #: Okuma başarılı ve engelleyici sorun yok.
+    tamam: bool
+    #: Okunduğu an (tekdüze saat); hiç okunmadıysa ``None``.
+    zaman: float | None
+    engeller: tuple[str, ...] = ()
+    uyarilar: tuple[str, ...] = ()
+    #: IP kısıtlaması var mı (Binance'in bildirdiği ``ipRestrict``).
+    ip_kisitli: bool | None = None
+    #: Para çekme izni (``enableWithdrawals``); ``canWithdraw`` DEĞİL.
+    cekim_izni: bool | None = None
+    #: Spot işlem izni (``enableSpotAndMarginTrading``).
+    islem_izni: bool | None = None
+    hata: str | None = None
+
+
+class LiveTrader(SignedTrader):
+    """Binance **canlı** hesabına (gerçek para) imzalı istek gönderen tek sınıf.
+
+    ``DemoTrader``'dan farkları: ortam ``LIVE``, kimlik öneki ``albsat-canli-``,
+    izin listesinde anahtarın izinlerini okuyan ``/sapi/v1/account/apiRestrictions``
+    var, ve iki ek kilit: yeni giriş emri ancak izinler taze ve para çekme kapalı
+    okunmuşsa, tutarı da tavanı aşmıyorsa gider.
+    """
+
+    ENVIRONMENT = Environment.LIVE
+    PREFIX = LIVE_PREFIX
+    REAL_MONEY = True
+    ALLOWED = ALLOWED_LIVE
+    NAME = "LiveTrader"
+
+    def __init__(
+        self,
+        key: StoredKey,
+        *,
+        environment: Environment | None = None,
+        budget: RequestBudget | None = None,
+        opener: Callable[..., Any] = urllib.request.urlopen,
+        time_ms: Callable[[], int] = lambda: int(time.time() * 1000),
+        timeout: float = 15.0,
+        entry_cap_usdt: Callable[[], Decimal | None] | None = None,
+        monotonic: Callable[[], float] = time.monotonic,
+    ) -> None:
+        super().__init__(key, environment=environment, budget=budget, opener=opener,
+                         time_ms=time_ms, timeout=timeout)
+        self.entry_cap_usdt = entry_cap_usdt
+        self.monotonic = monotonic
+        self._permissions = PermissionState(tamam=False, zaman=None)
+
+    # --- izinler -----------------------------------------------------------------
+
+    def permissions(self) -> PermissionState:
+        with self._lock:
+            return self._permissions
+
+    def api_restrictions(self) -> dict[str, Any]:
+        result = self.request("GET", PERMISSIONS_PATH)
+        return result if isinstance(result, dict) else {}
+
+    def verify_permissions(self) -> PermissionState:
+        """Anahtarın izinlerini okur. Okunamazsa önceki durum korunur, hata yazılır
+        (izin tazeliği dolunca yeni giriş yine kapanır)."""
+        from albsat.exchange.signed import live_key_problems
+
+        try:
+            payload = self.api_restrictions()
+        except Exception as error:  # noqa: BLE001 - çağıran taraf hatayı gösterir
+            with self._lock:
+                previous = self._permissions
+                self._permissions = PermissionState(
+                    tamam=previous.tamam, zaman=previous.zaman, engeller=previous.engeller,
+                    uyarilar=previous.uyarilar, ip_kisitli=previous.ip_kisitli,
+                    cekim_izni=previous.cekim_izni, islem_izni=previous.islem_izni,
+                    hata=f"{type(error).__name__}: {error}"[:300],
+                )
+            raise
+        blocking, warnings = live_key_problems(payload)
+        state = PermissionState(
+            tamam=not blocking,
+            zaman=self.monotonic(),
+            engeller=tuple(blocking),
+            uyarilar=tuple(warnings),
+            ip_kisitli=bool(payload.get("ipRestrict")),
+            cekim_izni=bool(payload.get("enableWithdrawals")),
+            islem_izni=bool(payload.get("enableSpotAndMarginTrading")),
+        )
+        with self._lock:
+            self._permissions = state
+        return state
+
+    def entry_block_reason(self) -> str | None:
+        """Yeni giriş emri neden gönderilemez? ``None``: gönderilebilir."""
+        state = self.permissions()
+        if state.zaman is None:
+            return "Canlı anahtarın izinleri henüz okunmadı."
+        if not state.tamam:
+            return "Canlı anahtar izinleri uygun değil: " + " ".join(state.engeller)
+        if self.monotonic() - state.zaman > PERMISSION_MAX_AGE_SECONDS:
+            return "Canlı anahtarın izinleri bir saatten uzun süredir okunamadı."
+        return None
+
+    def _check_entry(self, params: Mapping[str, Any]) -> None:
+        reason = self.entry_block_reason()
+        if reason is not None:
+            raise TradingRefused(reason + " Giriş emri gönderilmedi.")
+        cap = self.entry_cap_usdt() if self.entry_cap_usdt is not None else None
+        if cap is None:
+            return
+        try:
+            notional = Decimal(str(params["workingPrice"])) * \
+                Decimal(str(params["workingQuantity"]))
+        except (KeyError, InvalidOperation, ValueError):
+            raise TradingRefused("Giriş emrinin tutarı okunamadı; gönderilmedi.") from None
+        if notional > cap * CAP_TOLERANCE:
+            raise TradingRefused(
+                f"Giriş emrinin tutarı ({notional:.2f} USDT) canlı emir tavanını "
+                f"({cap} USDT) aşıyor; gönderilmedi.")
 
 
 __all__ = [
     "ALLOWED",
+    "ALLOWED_LIVE",
     "CLIENT_PREFIX",
+    "DEMO_PREFIX",
     "KEYCHAIN_SERVICE_DEMO",
+    "KEYCHAIN_SERVICE_LIVE",
+    "LIVE_PREFIX",
+    "PERMISSIONS_PATH",
+    "PERMISSION_MAX_AGE_SECONDS",
     "DemoTrader",
+    "LiveTrader",
+    "PermissionState",
+    "SignedTrader",
     "ExchangeError",
     "OrderCounts",
     "OutcomeUnknown",

@@ -237,26 +237,43 @@ def test_saglik_uca_gore_emir_yetkisi_yok(client):
     assert "kullanılmıyor" in veri["api_anahtari"]
 
 
-def test_emir_uclari_yalnizca_kagit_ve_demo_altinda(client):
-    """Emirle ilgili her uç ``/api/kagit/`` (kâğıt defter) ya da ``/api/demo/``
-    (Binance Demo Mode, sahte para) altında. Canlı hesaba emir ucu yok."""
+def test_emir_uclari_yalnizca_kagit_demo_ve_canli_altinda(client):
+    """Emirle ilgili her uç ``/api/kagit/`` (kâğıt defter), ``/api/demo/`` (Binance
+    Demo Mode, sahte para) ya da ``/api/canli/`` (Faz 6, gerçek para) altında."""
     app = client.app
     yollar = {route.path for route in app.routes}
     yasak = ("order", "emir", "trade", "islem-ac", "satin-al")
     assert not [
         y for y in yollar
         if any(k in y.lower() for k in yasak)
-        and not y.startswith(("/api/kagit/", "/api/demo/"))
+        and not y.startswith(("/api/kagit/", "/api/demo/", "/api/canli/"))
     ]
 
 
-def test_yazma_metodu_yalnizca_kagit_ve_demo_altinda(client):
-    """Faz 3 uçları hiçbir şeyi değiştirmiyor; POST yalnızca kâğıt işlemde ve Demo'da."""
+def test_canli_emir_uclari_bilinen_listede(client):
+    """Gerçek parayla emir gönderen uç listesi bilerek değişir; yeni bir uç bu testi
+    kırar ve gözden geçirilmeden eklenemez."""
+    from fastapi.routing import APIRoute
+
+    yazanlar = {route.path for route in client.app.routes
+                if isinstance(route, APIRoute) and route.path.startswith("/api/canli/")
+                and "POST" in route.methods}
+    assert yazanlar == {
+        "/api/canli/mod", "/api/canli/emir", "/api/canli/oneri-gonder",
+        "/api/canli/oneri-reddet", "/api/canli/iptal", "/api/canli/kapat",
+        "/api/canli/uzlastir", "/api/canli/ayarlar", "/api/canli/tavan",
+        "/api/canli/art-arda-sifirla", "/api/canli/hesap-sifirla",
+    }
+
+
+def test_yazma_metodu_yalnizca_kagit_demo_ve_canli_altinda(client):
+    """Faz 3 uçları hiçbir şeyi değiştirmiyor; POST yalnızca kâğıt işlemde, Demo'da
+    ve canlı işlemde."""
     from fastapi.routing import APIRoute
 
     for route in client.app.routes:
         if isinstance(route, APIRoute) and not route.path.startswith(
-                ("/api/kagit/", "/api/demo/")):
+                ("/api/kagit/", "/api/demo/", "/api/canli/")):
             assert route.methods <= {"GET", "HEAD"}, route.path
 
 
