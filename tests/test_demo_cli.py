@@ -88,12 +88,19 @@ def test_dogrulama_izinleri_ve_komisyonu_okur(tmp_path):
     assert measured is not None and set(measured.tablolar) == {"BTCUSDT", "SOLUSDT"}
 
 
-def test_dogrulama_cekim_izni_acik_anahtari_reddeder(tmp_path):
+def test_dogrulama_hesabin_cekim_bayragini_engel_saymaz(tmp_path):
     _, fake, trader = _exchange()
-    fake.can_withdraw = True
+    fake.can_withdraw = True  # Demo hesabı böyle döndürüyor; anahtar izni değil
+    said: list[str] = []
+    assert cli.verify(trader, tmp_path, say=said.append) == 0
+
+
+def test_dogrulama_islem_kapali_hesabi_reddeder(tmp_path):
+    _, fake, trader = _exchange()
+    fake.can_trade = False
     said: list[str] = []
     assert cli.verify(trader, tmp_path, say=said.append) == 1
-    assert any("para çekme izni AÇIK" in line for line in said)
+    assert any("işlem yapamıyor" in line for line in said)
 
 
 def test_sinama_emri_dolmaz_akistan_izlenir_ve_iptal_edilir(tmp_path):

@@ -519,7 +519,7 @@ def create_app(state: AppState) -> FastAPI:
                 else "yok — Demo anahtarı kurulu değil; kâğıt emirler yalnızca yerel defterde"
             ),
             "api_anahtari": (
-                "Demo Mode anahtarı (Anahtar Zinciri'nde; para çekme izni kapalı olmalı)"
+                "Demo Mode anahtarı (Anahtar Zinciri'nde; Demo'da para çekme yok)"
                 if runtime is not None and runtime.demo is not None
                 and runtime.demo.trader is not None else "kullanılmıyor"
             ),

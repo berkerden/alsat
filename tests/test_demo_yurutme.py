@@ -419,12 +419,18 @@ def test_anahtar_varsa_demo_adresleriyle_kurulur(tmp_path):
     assert "hazırlanıyor" in (executor.not_ready_reason() or "")
 
 
-def test_para_cekme_izni_acik_anahtar_reddedilir(tmp_path):
+def test_hesabin_cekim_bayragi_engel_sayilmaz_islem_kapaliysa_reddedilir(tmp_path):
+    # Demo hesabı canWithdraw=true döndürüyor (23 Eylül 2026, Berk'in Mac'i). Bu
+    # hesabın bayrağıdır, anahtarın izni değil; Demo'da para çekme yok.
     rig = build(tmp_path, bootstrap=False)
     rig.fake.can_withdraw = True
-    assert not rig.executor.bootstrap()
-    assert "para çekme" in (rig.executor.not_ready_reason() or "")
-    assert not rig.fake.posts()
+    assert rig.executor.bootstrap()
+    assert rig.executor.not_ready_reason() is None
+    closed = build(tmp_path / "kapali", bootstrap=False)
+    closed.fake.can_trade = False
+    assert not closed.executor.bootstrap()
+    assert "işlem yapamıyor" in (closed.executor.not_ready_reason() or "")
+    assert not closed.fake.posts()
 
 
 # --- arayüz uçları ---------------------------------------------------------------------------

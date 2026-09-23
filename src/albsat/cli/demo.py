@@ -53,7 +53,7 @@ from albsat.exchange.signed import (
 from albsat.exchange.trading import KEYCHAIN_SERVICE_DEMO, DemoTrader, OutcomeUnknown
 from albsat.exchange.user_stream import OrderUpdate, UserStream
 from albsat.execution import errors, ids
-from albsat.execution.executor import DEMO_INFO_FILENAME
+from albsat.execution.executor import DEMO_INFO_FILENAME, demo_account_problem
 from albsat.execution.planner import Plan, plan_otoco
 from albsat.execution.settings import ExecutionSettings
 
@@ -130,7 +130,7 @@ def setup(ask: Ask = input, secret: Ask = getpass.getpass, say: Say = _say) -> S
     say("  2) 'API Oluştur' → anahtar türü 'Kendi ürettiğim' (Self-generated).")
     say("  3) Etiket olarak 'albsat-demo' yazın.")
     say("  4) Genel anahtar kutusuna yukarıdaki metni yapıştırın.")
-    say("  5) İzinler: 'Okuma' ve 'Spot işlem' AÇIK; para çekme varsa KAPALI.")
+    say("  5) İzin ayarları Demo'da değiştirilemiyor; olduğu gibi bırakın.")
     say("  6) Binance size bir 'API Key' gösterecek (uzun bir harf-rakam dizisi).\n")
     try:
         api_key_text = secret(
@@ -152,17 +152,6 @@ def setup(ask: Ask = input, secret: Ask = getpass.getpass, say: Say = _say) -> S
         return None
     say("✓ Demo anahtarı Mac'in Anahtar Zinciri'ne kaydedildi (depoda ve dosyalarda yok).")
     return StoredKey(api_key, private)
-
-
-def account_problem(payload: dict[str, Any]) -> str | None:
-    """Yürütücüdeki denetimin aynısı: çekim izni açıksa ya da işlem kapalıysa kullanılmaz."""
-    if payload.get("canWithdraw"):
-        return ("Demo anahtarında para çekme izni AÇIK görünüyor. Uygulama bu anahtarla emir "
-                "göndermeyi reddediyor; Demo API yönetiminde çekim iznini kapatın.")
-    if not payload.get("canTrade"):
-        return ("Demo anahtarında Spot işlem izni kapalı. Demo API yönetiminde "
-                "'Spot işlem' iznini açın.")
-    return None
 
 
 def _balances(payload: dict[str, Any], assets: set[str]) -> list[str]:
@@ -187,12 +176,11 @@ def verify(trader: DemoTrader, root: Path, say: Say = _say) -> int:
     except Exception as error:  # noqa: BLE001 - kullanıcıya okunur hata
         say(f"! Binance Demo'ya sorulamadı: {_problem(error)}")
         return 1
-    problem = account_problem(payload)
+    problem = demo_account_problem(payload)
     if problem is not None:
         say(f"✗ {problem}")
-        say("Düzelttikten sonra şunu çalıştırın: bash kurulum.sh demo-anahtar")
         return 1
-    say("✓ Spot işlem izni açık, para çekme izni kapalı.")
+    say("✓ Demo hesabı işleme açık (Demo Mode'da para çekme yoktur).")
     lines = _balances(payload, {"USDT", "BTC", "SOL", "BNB"})
     if lines:
         say("Demo bakiyesi (sahte para):")
@@ -288,11 +276,11 @@ def smoke(
     except Exception as error:  # noqa: BLE001
         say(f"✗ Binance Demo'ya sorulamadı: {_problem(error)}")
         return 1
-    problem = account_problem(payload)
+    problem = demo_account_problem(payload)
     if problem is not None:
         say(f"✗ {problem}")
         return 1
-    say(f"✓ Saat farkı {offset} ms; Spot işlem açık, para çekme kapalı.")
+    say(f"✓ Saat farkı {offset} ms; Demo hesabı işleme açık.")
     for line in _balances(payload, {"USDT", symbol.removesuffix("USDT")}):
         say(line)
 

@@ -297,8 +297,8 @@ Oranları sonradan yeniden ölçmek için `bash kurulum.sh komisyon`.
 
 Emir gönderen anahtar yalnızca **Demo Mode** içindir ve ayrı kurulur
 (`bash kurulum.sh demo-anahtar`, Anahtar Zinciri'nde `albsat-binance-demo`
-kaydı). Binance Demo'nun API yönetiminde oluşturulur; Spot işlem izni açık,
-para çekme izni kapalı olmalı. Canlı hesap için emir anahtarı Faz 6'ya
+kaydı). Binance Demo'nun API yönetiminde oluşturulur; Demo'da izinler
+değiştirilemiyor ve para çekme yok. Canlı hesap için emir anahtarı Faz 6'ya
 kadar oluşturulmaz. VPS'te statik IP kısıtlaması zorunludur; Mac'te ev IP'si
 değişebildiği için bütçe sınırını yazılım uygular.
 

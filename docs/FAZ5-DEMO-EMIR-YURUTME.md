@@ -275,8 +275,15 @@ ayrışmadığını bir test denetler.
   bilgisayarda üretilir; Binance'e yalnızca genel yarı verilir. API Key
   Terminal'e gizli girişle yazılır. Depoda, dosyada, günlükte, denetim
   kaydında ve arayüzde anahtar yoktur; `repr` bile gizler.
-- **Para çekme izni açıksa** (`canWithdraw`) ya da Spot işlem kapalıysa
-  yürütücü emir göndermeyi reddeder.
+- **Para çekme.** Demo Mode'da para çekme yoktur: anahtar izinleri Demo'da
+  değiştirilemiyor ve çekim seçeneği hiç sunulmuyor, Demo API cüzdan uçlarını
+  vermiyor, `DemoTrader`'ın izin listesinde çekim adresi yok. `GET
+  /api/v3/account`'taki `canWithdraw` **hesabın** bayrağıdır, anahtarın izni
+  değil; Demo hesabı onu `true` döndürüyor (23 Eylül 2026'da Berk'in Mac'inde
+  görüldü) ve Demo'da engel sayılmaz. Hesap `canTrade` kapalı derse yürütücü
+  emir göndermez. **Faz 6 için:** canlı anahtarın çekim izni bu bayrakla değil,
+  `/sapi/v1/account/apiRestrictions`'taki `enableWithdrawals` ile denetlenmeli
+  (Faz 4'ün `signed.restriction_problems`'ı bunu yapar).
 - **İstek bütçesi:** yerel tavan 600 ağırlık/dk; 429'da borsanın söylediği
   süre boyunca hiç istek gitmez; 418'de engel bitene kadar Demo işlem durur ve
   bildirim gider. `-1021`'de saat eşitlenip bir kez yeniden denenir.
@@ -347,10 +354,10 @@ iptal eder.
 | Dosya | Test | Ne sınıyor |
 |---|---|---|
 | `test_demo_kaos.py` | 36 | Sahte borsayla uçtan uca: hedef, stop, giriş süresi; kısmi giriş (20 sn sonra OCO), kalanın dolması, kısmi hedef; fiyat stopun altındayken korumalı çıkış, ince defter; yanıtı kaybolan emir (borsaya ulaşmış üç türü, ulaşmamış iki türü); kaybolan iptal yanıtı; sorguda görünmeyen bekleyen bacaklar; kopuk akış; kısmi dolumun ortasında çökme ve yeniden açılış; uyku sıçraması; `-1021`, 429, 418; limit-maker reddinde yeniden fiyatlama (kural) ve fiyatlamama (elle); bakiyeyle sınırlanan ve açılmayan emir; süresi dolan stop; acil durdurun üç türü; azami tutma; elle emirlere dokunmama; yetim alış/satış; günlük zarar sınırı; küsuratın taşınması ve küsuratla kapanış; CSV |
-| `test_demo_yurutme.py` | 22 | Ortam koruması, izin listesi, önek ve emir türü koruması, GET/POST ağ hatası ayrımı, imza, kimlikler, planlayıcı (yuvarlama, limitli stop, filtre sorunları, OCO, çıkış), hata sınıflandırma, akış ayrıştırma ve abonelik imzası, `serverShutdown`, ayarlar ve YAML aynılığı, anahtar yok/çevrimdışı/anahtar var kurulumu, para çekme izninde ret, Demo uçları, arayüzden kapatma ve acil durdurma, Telegram |
-| `test_demo_cli.py` | 8 | Anahtar kurulumunda yalnızca genel yarının gösterilmesi, geçersiz API Key, yarım kalan denemenin aynı çifti kullanması, doğrulamanın yalnızca okuması, çekim izninde ret, sınama emrinin dolmadan gönderilip iptal edilmesi, onaysız gönderilmemesi, Mac dışında çalışmaması |
+| `test_demo_yurutme.py` | 22 | Ortam koruması, izin listesi, önek ve emir türü koruması, GET/POST ağ hatası ayrımı, imza, kimlikler, planlayıcı (yuvarlama, limitli stop, filtre sorunları, OCO, çıkış), hata sınıflandırma, akış ayrıştırma ve abonelik imzası, `serverShutdown`, ayarlar ve YAML aynılığı, anahtar yok/çevrimdışı/anahtar var kurulumu, hesabın çekim bayrağının engel sayılmaması ve işlem kapalı hesabın reddi, Demo uçları, arayüzden kapatma ve acil durdurma, Telegram |
+| `test_demo_cli.py` | 9 | Anahtar kurulumunda yalnızca genel yarının gösterilmesi, geçersiz API Key, yarım kalan denemenin aynı çifti kullanması, doğrulamanın yalnızca okuması, çekim bayrağının engel sayılmaması, işlem kapalı hesabın reddi, sınama emrinin dolmadan gönderilip iptal edilmesi, onaysız gönderilmemesi, Mac dışında çalışmaması |
 
-Bütün paket: **582 test** geçiyor.
+Bütün paket: **583 test** geçiyor.
 
 Arayüz gerçek tarayıcıda (Chromium; 1280 px 1×/2×, 390 px 2×/3×) sahte
 borsaya bağlı bir sunucuyla sınandı: yatay taşma yok, sekme değiştirirken tek

@@ -158,6 +158,12 @@ def looks_like_ed25519(private_key_pem: str) -> bool:
 def assert_no_withdrawal_permission(account_payload: Mapping[str, object]) -> None:
     """``GET /api/v3/account`` yanıtını denetler; çekim izni açıksa durdurur.
 
+    DİKKAT (23 Eylül 2026): ``canWithdraw`` hesabın bayrağıdır, API
+    anahtarının izni değil; Binance Demo hesabı bile ``true`` döndürüyor.
+    Anahtarın çekim izni ``/sapi/v1/account/apiRestrictions``'taki
+    ``enableWithdrawals`` ile denetlenir (``signed.restriction_problems``).
+    Bu fonksiyon hiçbir yerden çağrılmıyor; Faz 6'da onun yerine o kullanılmalı.
+
     SPEC.md §5: "Uygulama açılışta anahtarın izinlerini kontrol etsin; çekim
     izni açıksa çalışmayı reddetsin."
     """

@@ -176,6 +176,28 @@ ORDER_SOFT_CAP_SHORT = Decimal("0.5")
 ORDER_SOFT_CAP_DAY = Decimal("0.8")
 
 
+def demo_account_problem(payload: dict[str, Any]) -> str | None:
+    """Demo hesabı emir için kullanılabilir mi? ``None``: evet.
+
+    ``GET /api/v3/account``'taki ``canWithdraw`` **hesabın** bayrağıdır,
+    anahtarın izni değildir. Demo hesabı onu ``true`` döndürüyor (23 Eylül
+    2026, Berk'in Mac'i) ama Demo Mode'da para çekme yoktur: anahtar izinleri
+    Demo'da değiştirilemiyor ve çekim seçeneği hiç sunulmuyor, Demo API yalnızca
+    ``/api`` işlem uçlarını verir (cüzdan uçları yok) ve ``DemoTrader``'ın izin
+    listesinde para çekme adresi bulunmaz. Bu yüzden Demo'da bu bayrak engel
+    sayılmaz.
+
+    Faz 6'da canlı anahtar için çekim izni bu bayrakla DEĞİL,
+    ``/sapi/v1/account/apiRestrictions``'taki ``enableWithdrawals`` ile
+    denetlenmelidir (Faz 4'ün ``signed.restriction_problems``'ı bunu yapar).
+    """
+    if not payload.get("canTrade"):
+        return ("Demo hesabı işlem yapamıyor görünüyor (Binance 'canTrade' kapalı "
+                "diyor). Demo Mode sayfasında hesabın açık olduğunu kontrol edin; "
+                "sürerse bu mesajı Claude ile paylaşın.")
+    return None
+
+
 def _m(value: Decimal) -> str:
     return format_for_api(value)
 
@@ -548,12 +570,7 @@ class DemoExecutor:
             asset: [str(free), str(locked)] for asset, (free, locked) in balances.items()
         })
         if check_permissions:
-            if payload.get("canWithdraw"):
-                return ("Demo anahtarında para çekme izni AÇIK görünüyor. Uygulama bu anahtarla "
-                        "emir göndermeyi reddediyor; Demo API yönetiminde çekim iznini kapatın.")
-            if not payload.get("canTrade"):
-                return ("Demo anahtarında Spot işlem izni kapalı. Demo API yönetiminde "
-                        "'Spot & Margin Trading' iznini açın.")
+            return demo_account_problem(payload)
         return None
 
     def _free(self, asset: str) -> Decimal | None:
@@ -2122,4 +2139,5 @@ __all__ = [
     "DemoAccountView",
     "DemoExecutor",
     "PlaceResult",
+    "demo_account_problem",
 ]
