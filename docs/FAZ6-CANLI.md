@@ -260,7 +260,12 @@ söylüyordu. Binance duyuruya 24 Ekim 2023'te bu kuralın artık geçerli
 olmadığı notunu ekledi. Üçüncü taraf kaynaklar bugün kısıtsız anahtarların bir
 süre kullanılmayınca silindiğini yazıyor; bunu Binance'in kendi belgesinde
 bulamadım. **Güncel kural, anahtarı oluştururken Binance'in sayfasında
-yazandır.** Uygulama izinleri 30 dakikada bir okuduğu için Binance işlem
+yazandır.**
+
+Kaynaklar (23 Eylül 2026'da okundu):
+[Binance duyurusu, 26 Temmuz 2021](https://www.binance.com/en/support/announcement/updates-to-api-key-permission-rules-2021-07-26-11e4c2f44e7a47b9b5fc0e479c0b256f),
+[Binance API belgesi: Get API Key Permission](https://developers.binance.com/docs/wallet/account/api-key-permission),
+[üçüncü taraf özet (QuotaGuard)](https://www.quotaguard.com/blog/binance-api-ip-whitelist-cloud-static-ip). Uygulama izinleri 30 dakikada bir okuduğu için Binance işlem
 iznini kapatırsa bunu görür, canlı girişleri durdurur ve haber verir.
 
 VPS'e geçişte (Faz 7) IP kısıtı zorunludur.
