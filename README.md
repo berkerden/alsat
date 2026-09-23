@@ -31,7 +31,7 @@ Fazlar arası devir notu: [`docs/DEVIR-NOTU.md`](docs/DEVIR-NOTU.md)
 | 3 | Periyot sihirbazı + öneri motoru + arayüz | ✅ Onaylandı |
 | 4 | Risk motoru + kâğıt işlem + Telegram | ✅ Onaylandı |
 | 5 | Emir yürütme (**Demo Mode**) | ✅ Onaylandı |
-| 6 | Canlı yarı otomatik → tam otomatik | 🔶 Yazıldı; Mac'te gerçek hesap sınaması ve onay bekliyor |
+| 6 | Canlı yarı otomatik → tam otomatik | ✅ Onaylandı (Tam Otomatik kapıda kilitli) |
 | 7 | VPS dağıtımı | ⏳ |
 
 Her fazın sonunda çalışma durur ve onay beklenir (SPEC.md §10).

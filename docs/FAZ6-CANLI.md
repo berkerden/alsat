@@ -353,5 +353,6 @@ Sonuç:
 
 ## 12. Onay
 
-Faz 6 henüz onaylanmadı. Berk'in Mac'indeki sınama geçti (§11); onay
-bekleniyor.
+**Faz 6, 23 Eylül 2026'da onaylandı.** Berk'in cümlesi: *"onaylıyorum"*.
+Onay, Mac'teki gerçek hesap sınamasından (§11) sonra geldi. Faz 7'ye
+taşınan uyarılar ve açık sorular [`DEVIR-NOTU.md`](DEVIR-NOTU.md) §7'de.
