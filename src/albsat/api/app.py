@@ -5,9 +5,10 @@ bütün coinler "Sadece Öneri" modunda** başlar (SPEC §2).
 
 Faz 3 uçları (öneriler, kütüphane, sihirbaz, ek araçlar) diskten okur ve
 yan etkisizdir. Faz 4 ile gelen kâğıt işlem uçları ``paper_api`` dosyasında
-ve ``/api/kagit/`` altındadır; durum değiştiren uçlar yalnızca oradadır ve
-yalnızca **kâğıt hesabı** değiştirir. Bu katmanda Binance'e emir gönderen
-ya da API anahtarına erişen kod yoktur; gerçek emir Faz 5'te (Demo Mode).
+ve ``/api/kagit/`` altındadır; yalnızca **kâğıt hesabı** değiştirirler.
+Faz 5'in Demo Mode uçları ``demo_api`` dosyasında ve ``/api/demo/``
+altındadır; emirleri Demo yürütücüsü (``execution.executor``) gönderir. Bu
+katmanda imzalı istemciye ya da API anahtarına erişen kod yoktur.
 
 **Yerel koruma.** Sunucu yalnızca bu Mac'ten erişilebilir olsa da tarayıcıda
 açık başka bir site, kullanıcının tarayıcısı üzerinden ``127.0.0.1``e istek
@@ -35,7 +36,7 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from albsat.api import paper_api, serialize
+from albsat.api import demo_api, paper_api, serialize
 from albsat.core.filters import SymbolRules
 from albsat.data.exchangeinfo import ExchangeInfoStore
 from albsat.data.klines import closed_only, interval_ms, to_utc
@@ -246,6 +247,7 @@ def create_app(state: AppState) -> FastAPI:
         return await call_next(request)
 
     paper_api.register(app, lambda: state.runtime)
+    demo_api.register(app, lambda: state.runtime)
 
     # --- durum ---------------------------------------------------------
 
@@ -510,9 +512,17 @@ def create_app(state: AppState) -> FastAPI:
                 "Binance genel piyasa verisi (WebSocket, kopunca REST) — hesap bilgisi yok"
                 if live else "yok — sunucu diskten okur"
             ),
-            "emir_yetkisi": "yok — Binance'e emir gönderen kod bulunmuyor; kâğıt emirler "
-            "yalnızca yerel defterde",
-            "api_anahtari": "kullanılmıyor",
+            "emir_yetkisi": (
+                "yalnızca Binance Demo Mode (sahte para); canlı hesaba emir gönderen kod yok"
+                if runtime is not None and runtime.demo is not None
+                and runtime.demo.trader is not None
+                else "yok — Demo anahtarı kurulu değil; kâğıt emirler yalnızca yerel defterde"
+            ),
+            "api_anahtari": (
+                "Demo Mode anahtarı (Anahtar Zinciri'nde; para çekme izni kapalı olmalı)"
+                if runtime is not None and runtime.demo is not None
+                and runtime.demo.trader is not None else "kullanılmıyor"
+            ),
             "veri_dizini": str(state.veri_dizini.resolve()),
             "kural_deposu_var": state.kural_dosyasi.exists(),
             "filtre_onbellegi_var": ExchangeInfoStore(state.veri_dizini).exists(),

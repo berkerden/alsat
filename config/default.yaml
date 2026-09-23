@@ -54,6 +54,13 @@ emir:
   # Kısmi dolumda pozisyon borsada korumasız kalır (FAZ0-MIMARI.md Risk #1).
   # Bu süre dolunca kalan iptal edilir ve dolan miktar için hemen OCO kurulur.
   korumasiz_azami_saniye: 20
+  # Faz 5. Limitli stop (STOP_LOSS_LIMIT) seçilirse limit fiyatı stopun bu kadar altında.
+  stop_limit_ofset_yuzde: "0.5"
+  # Stop kurulamadığında ya da kapatmada korumalı satış (LIMIT IOC) en iyi alışın en
+  # fazla bu kadar altından yapılır.
+  azami_kayma_yuzde: "0.5"
+  # Bu değerler src/albsat/execution/settings.py'deki varsayılanlarla aynı olmalı
+  # (tests/test_demo_yurutme.py denetler). Arayüzden değiştirilen değer veritabanında durur.
 
 veri:
   periyotlar: ["1m", "5m", "15m", "1h"]

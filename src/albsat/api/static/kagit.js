@@ -159,7 +159,8 @@
     k.appendChild(el("p", "kart-etiket",
       "Uygulama her açılışta bütün coinleri Sadece Öneri'ye alır. Kâğıt İşlem modunda, " +
       "kabul edilmiş bir kural sinyal verince kâğıt emir kendiliğinden açılır; elle " +
-      "kâğıt emir de yalnızca bu modda açılır."));
+      "kâğıt emir de yalnızca bu modda açılır. Demo Mode'da aynı sinyal Binance Demo " +
+      "hesabına (sahte para) gerçek emir olarak gider; ayrıntısı Demo işlem sekmesinde."));
     const kap = el("div", "mod-satirlar");
     v.modlar.forEach(function (m) {
       const satir = el("label", "mod-satir");
@@ -168,9 +169,13 @@
       sec.setAttribute("aria-label", m.sembol + " modu");
       v.secilebilir.forEach(function (s) {
         const o = new Option(s.etiket, s.mod);
-        if (s.mod === "kagit" && !v.canli) {
+        if ((s.mod === "kagit" || s.mod === "demo") && !v.canli) {
           o.disabled = true;
           o.textContent = s.etiket + " (canlı veri yok)";
+        } else if (s.mod === "demo" && v.demo_hazir_degil && m.mod !== "demo") {
+          o.disabled = true;
+          o.textContent = s.etiket + " (hazır değil)";
+          o.title = v.demo_hazir_degil;
         }
         sec.appendChild(o);
       });
@@ -189,13 +194,17 @@
         sec.disabled = false;
       });
       satir.appendChild(sec);
-      if (m.onceki_oturum === "kagit" && m.mod !== "kagit") {
+      if ((m.onceki_oturum === "kagit" || m.onceki_oturum === "demo") &&
+          m.mod !== m.onceki_oturum) {
         satir.appendChild(el("span", "kart-etiket",
-          "Önceki oturumda Kâğıt İşlem'deydi; devam etmek için yeniden seçin."));
+          "Önceki oturumda " + m.onceki_oturum_tr + " modundaydı; devam etmek için yeniden seçin."));
       }
       kap.appendChild(satir);
     });
     k.appendChild(kap);
+    if (v.demo_hazir_degil) {
+      k.appendChild(el("p", "kart-etiket", "Demo Mode şu an seçilemiyor: " + v.demo_hazir_degil));
+    }
     return k;
   }
 
@@ -677,7 +686,7 @@
         baglantiCiz);
       cizDegistiyse("kagit-modlar", {
         modlar: d.modlar, secilebilir: d.secilebilir_modlar, kilitli: d.kilitli_modlar,
-        canli: d.canli,
+        canli: d.canli, demo_hazir_degil: d.demo_hazir_degil,
       }, modlarCiz);
       cizDegistiyse("kagit-hesap", d.hesap, hesapCiz);
       cizDegistiyse("kagit-risk", { risk: d.risk, durdurulan: d.durdurulan_kurallar }, riskCiz);

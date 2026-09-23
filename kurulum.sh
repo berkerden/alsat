@@ -16,10 +16,13 @@ cd "$(dirname "$0")" || exit 1
 # internete çıkmaz, veriyi diskteki ./veri klasöründen okur.
 # "bash kurulum.sh teshis" ayrıca maliyetsiz teşhis turunu da çalıştırır.
 # "bash kurulum.sh arayuz" tarama yapmaz; kurulumu tamamlayıp arayüzü açar
-# (yalnızca 127.0.0.1; Binance'e emir göndermez, kâğıt işlem yereldir).
+# (yalnızca 127.0.0.1; canlı hesaba emir göndermez; kâğıt işlem yereldir, Demo
+# işlem yalnızca Binance Demo Mode'a gider).
 # "bash kurulum.sh telegram" Telegram bildirimlerini kurar.
 # "bash kurulum.sh anahtar" yalnızca okuma izinli Binance API anahtarını kurar
 # ve hesaba özel komisyonu ölçer; "komisyon" yalnızca yeniden ölçer.
+# "bash kurulum.sh demo-anahtar" Binance Demo Mode (sahte para) anahtarını kurar;
+# "demo-sina" Demo'ya dolmayacak bir sınama emri gönderip iptal eder.
 SADECE_TARAMA=0
 TESHIS=0
 ARAYUZ=0
@@ -29,10 +32,11 @@ case "${1:-}" in
   tarama) SADECE_TARAMA=1 ;;
   teshis) SADECE_TARAMA=1; TESHIS=1 ;;
   arayuz) ARAYUZ=1 ;;
-  telegram|anahtar|komisyon) TEK_ADIM="$1" ;;
+  telegram|anahtar|komisyon|demo-anahtar|demo-sina) TEK_ADIM="$1" ;;
   *)
     hata "Bilinmeyen seçenek: $1"
-    printf 'Kullanılabilecekler: tarama, teshis, arayuz, telegram, anahtar, komisyon\n'
+    printf 'Kullanılabilecekler: tarama, teshis, arayuz, telegram, anahtar, komisyon,\n'
+    printf '                     demo-anahtar, demo-sina\n'
     printf 'Seçeneksiz çalıştırmak için:  bash kurulum.sh\n'
     exit 1
     ;;
@@ -131,6 +135,22 @@ if [ "$TEK_ADIM" = "komisyon" ]; then
   exit $?
 fi
 
+if [ "$TEK_ADIM" = "demo-anahtar" ]; then
+  baslik "4/$ADIM_SAYISI  Binance Demo Mode anahtarı (sahte para)"
+  printf '   Demo Mode sahte parayla çalışır; canlı hesabınıza hiçbir istek gitmez.\n'
+  printf "   Anahtarın özel yarısı Mac'inizin Anahtar Zinciri'nde kalır.\n\n"
+  python -m albsat.cli.demo
+  exit $?
+fi
+
+if [ "$TEK_ADIM" = "demo-sina" ]; then
+  baslik "4/$ADIM_SAYISI  Demo Mode uçtan uca sınaması (sahte para)"
+  printf "   Demo'ya dolmayacak küçük bir alış emri gönderilir, izlenir ve iptal edilir.\n"
+  printf '   Emir göndermeden önce size sorulur.\n\n'
+  python -m albsat.cli.demo --sina
+  exit $?
+fi
+
 if [ "$ARAYUZ" = "1" ]; then
   baslik "4/$ADIM_SAYISI  Arayüz açılıyor"
 
@@ -141,8 +161,9 @@ if [ "$ARAYUZ" = "1" ]; then
   fi
 
   printf '   Arayüz yalnızca kendi bilgisayarınızdan erişilebilir (127.0.0.1).\n'
-  printf "   Binance'in herkese açık fiyat akışına bağlanır; API anahtarı kullanmaz,\n"
-  printf "   Binance'e emir göndermez. Kâğıt işlemler yalnızca bu bilgisayarda kaydedilir.\n"
+  printf "   Binance'in herkese açık fiyat akışına bağlanır. Canlı hesabınıza emir\n"
+  printf "   göndermez. Kâğıt işlemler yalnızca bu bilgisayarda kaydedilir; Demo anahtarı\n"
+  printf "   kuruluysa Demo işlem sekmesi Binance Demo Mode'a (sahte para) emir gönderir.\n"
   printf '   Tarayıcı birkaç saniye içinde kendiliğinden açılacak.\n'
   printf '   %sKapatmak için bu pencerede Control-C tuşlayın.%s\n\n' "$KALIN" "$SIFIR"
 

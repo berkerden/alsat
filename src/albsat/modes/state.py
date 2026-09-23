@@ -1,14 +1,17 @@
 """Coin başına çalışma modu (SPEC.md §4.7).
 
-Faz 4'te seçilebilen modlar: **Kapalı**, **Sadece Öneri**, **Kâğıt İşlem**.
-Demo, Yarı Otomatik ve Tam Otomatik listede görünür ama kilitlidir; emir
-yürütme Faz 5'te, canlı işlem Faz 6'da gelir. Kilitli bir moda geçmeye
+Faz 5'te seçilebilen modlar: **Kapalı**, **Sadece Öneri**, **Kâğıt İşlem**,
+**Demo Mode**. Demo Mode'da emirler Binance Demo Mode hesabına gerçekten
+gönderilir (sahte para); bu mod ancak Demo bağlantısı hazırsa seçilebilir
+(``PaperEngine.set_mode`` denetler). Yarı Otomatik ve Tam Otomatik listede
+görünür ama kilitlidir; canlı işlem Faz 6'da gelir. Kilitli bir moda geçmeye
 çalışmak reddedilir ve nedeni söylenir.
 
 **Uygulama her açılışta Sadece Öneri modunda başlar** (SPEC §2, sabit
-karar). Bir önceki oturumda kâğıt işlemde olan coin, yeniden açılışta
-kendiliğinden kâğıt işleme dönmez; ``previous`` o bilgiyi arayüzün "önceki
-oturumda kâğıt işlemdeydi, devam etmek için açın" diyebilmesi için saklar.
+karar; Demo Mode dahil). Bir önceki oturumda kâğıt işlemde ya da Demo'da
+olan coin, yeniden açılışta kendiliğinden o moda dönmez; ``previous`` o
+bilgiyi arayüzün "önceki oturumda kâğıt işlemdeydi, devam etmek için açın"
+diyebilmesi için saklar.
 Borsada (burada: kâğıt defterde) duran emirler ve pozisyonlar moddan
 bağımsız olarak izlenmeye devam eder; gerçek bir borsada da uygulama
 kapanınca emirler silinmez.
@@ -40,11 +43,14 @@ MODE_LABELS_TR = {
 }
 
 #: Bu fazda seçilebilen modlar.
-SELECTABLE = (MODE_OFF, MODE_ADVICE, MODE_PAPER)
+SELECTABLE = (MODE_OFF, MODE_ADVICE, MODE_PAPER, MODE_DEMO)
+
+#: Otomatik işlem yapan modlar: bir sınır aşılınca ya da ACİL DURDUR'da
+#: bu modlardaki coinler Sadece Öneri'ye çekilir.
+TRADING_MODES = (MODE_PAPER, MODE_DEMO)
 
 #: Kilitli modlar ve hangi fazda açılacakları.
 LOCKED = {
-    MODE_DEMO: "Faz 5 (emir yürütme, Binance Demo Mode)",
     MODE_SEMI: "Faz 6 (canlı, her emir için onay)",
     MODE_FULL: "Faz 6 (canlı, canlıya geçiş kapısından sonra)",
 }
@@ -149,6 +155,13 @@ class ModeStore:
     def paper_symbols(self) -> tuple[str, ...]:
         return tuple(item.sembol for item in self.all() if item.mod == MODE_PAPER)
 
+    def demo_symbols(self) -> tuple[str, ...]:
+        return tuple(item.sembol for item in self.all() if item.mod == MODE_DEMO)
+
+    def trading_symbols(self) -> tuple[str, ...]:
+        """Kâğıt işlemde ya da Demo'da olan coinler."""
+        return tuple(item.sembol for item in self.all() if item.mod in TRADING_MODES)
+
 
 __all__ = [
     "DEFAULT_MODE",
@@ -161,6 +174,7 @@ __all__ = [
     "MODE_PAPER",
     "MODE_SEMI",
     "SELECTABLE",
+    "TRADING_MODES",
     "CoinMode",
     "ModeError",
     "ModeStore",

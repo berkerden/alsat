@@ -51,7 +51,14 @@ from albsat.core.fees import Liquidity, Side
 from albsat.core.filters import SymbolRules
 from albsat.core.money import ZERO, format_for_api
 from albsat.data.klines import interval_ms
-from albsat.modes.state import MODE_ADVICE, MODE_LABELS_TR, MODE_PAPER, ModeStore
+from albsat.modes.state import (
+    MODE_ADVICE,
+    MODE_DEMO,
+    MODE_LABELS_TR,
+    MODE_PAPER,
+    ModeError,
+    ModeStore,
+)
 from albsat.notify.base import (
     KIND_CANCEL,
     KIND_EXIT,
@@ -171,6 +178,12 @@ class PaperEngine:
         #: Aynı anda iki iş parçacığı (arayüz, canlı döngü, Telegram) hesabı
         #: değiştirmesin.
         self.lock = threading.RLock()
+        #: Faz 5: otomatik işlem durunca (sınır aşımı, ACİL DURDUR) çağrılanlar.
+        #: Demo yürütücüsü buraya "bekleyen girişleri iptal et" isteğini bağlar.
+        #: Kanca kilit almamalı, yalnızca istek bırakmalıdır (kilit sırası).
+        self.halt_hooks: list[Callable[[str, str], None]] = []
+        #: Demo Mode seçilebilir mi? ``None`` dönerse evet, yoksa sebep metni.
+        self.demo_ready: Callable[[], str | None] | None = None
 
     # --- okuma ----------------------------------------------------------
 
@@ -744,17 +757,27 @@ class PaperEngine:
                     kind=KIND_LIMIT,
                 )
 
+    def halt(self, title: str, detail: str, *, now: datetime, kind: str = KIND_LIMIT,
+             source: str = SOURCE_RISK) -> list[str]:
+        """Dışarıdan (Demo yürütücüsünden) otomatik işlemi durdurma."""
+        with self.lock:
+            return self._halt(title, detail, now=now, kind=kind, events=EngineEvents(),
+                              source=source)
+
     def _halt(self, title: str, detail: str, *, now: datetime, kind: str,
               events: EngineEvents, source: str = SOURCE_RISK) -> list[str]:
-        """Otomatik işlemi kapatır: kâğıt modundaki coinler Sadece Öneri'ye iner,
-        bekleyen girişler iptal edilir. Açık pozisyonların stop ve hedefi yerinde kalır."""
+        """Otomatik işlemi kapatır: kâğıt ve Demo modundaki coinler Sadece Öneri'ye
+        iner, bekleyen girişler iptal edilir. Açık pozisyonların stop ve hedefi
+        yerinde kalır (Demo'da borsada)."""
         switched: list[str] = []
-        for symbol in self.modes.paper_symbols():
+        for symbol in self.modes.trading_symbols():
             self.modes.set(symbol, MODE_ADVICE)
             switched.append(symbol)
         for order in self.ledger.active():
             if order.durum == STATUS_PENDING:
                 self._cancel(order, f"Otomatik işlem durduruldu: {title}.", events, source=source)
+        for hook in self.halt_hooks:
+            hook(title, source)
         self.audit.write(
             "durdurma",
             f"Otomatik işlem durduruldu: {title}",
@@ -764,8 +787,9 @@ class PaperEngine:
         )
         self.notifier.send(
             f"⛔ OTOMATİK İŞLEM DURDU — {title}\n{detail}\n"
-            f"Kâğıt işlemden çıkarılan coinler: {', '.join(switched) or 'yok'}. Açık "
-            "pozisyonların stop ve hedefi yerinde. Yeniden başlatmak arayüzden elle yapılır.",
+            f"Kâğıt işlemden ve Demo'dan çıkarılan coinler: {', '.join(switched) or 'yok'}. "
+            "Bekleyen girişler iptal edildi. Açık pozisyonların stop ve hedefi yerinde. "
+            "Yeniden başlatmak arayüzden elle yapılır.",
             kind=kind,
         )
         return switched
@@ -774,6 +798,11 @@ class PaperEngine:
 
     def set_mode(self, sembol: str, mode: str, *, source: str, now: datetime) -> tuple[str, str]:
         with self.lock:
+            if mode == MODE_DEMO and self.modes.get(sembol) != MODE_DEMO:
+                reason = ("Demo bağlantısı bu çalıştırmada kurulmadı." if self.demo_ready is None
+                          else self.demo_ready())
+                if reason is not None:
+                    raise ModeError(f"Demo Mode seçilemiyor: {reason}")
             old, new = self.modes.set(sembol, mode)
             if old != new:
                 self.audit.write(

@@ -21,10 +21,11 @@
   </div>
   <div class="ust-sag">
     <span id="veri-ozeti">Yükleniyor…</span>
-    <!-- Her sekmeden erişilebilir (SPEC §4.6). Kâğıt işlemi kapatır, bekleyen
-         emirleri iptal eder; açık pozisyonların stop ve hedefi yerinde kalır. -->
+    <!-- Her sekmeden erişilebilir (SPEC §4.6). Kâğıt işlemi ve Demo'yu kapatır,
+         bekleyen girişleri (Demo'da borsadakileri de) iptal eder; açık
+         pozisyonların stop ve hedefi yerinde kalır. -->
     <button id="acil-durdur" class="dugme dugme-tehlike" type="button"
-            title="Kâğıt işlemi kapatır, bekleyen emirleri iptal eder">ACİL DURDUR</button>
+            title="Kâğıt işlemi ve Demo'yu kapatır, bekleyen girişleri iptal eder; stoplar yerinde kalır">ACİL DURDUR</button>
   </div>
 </header>
 
@@ -35,6 +36,7 @@
   <button class="sekme" data-sekme="ek">Ek araçlar</button>
   <button class="sekme" data-sekme="gunluk">Sinyal günlüğü</button>
   <button class="sekme" data-sekme="kagit">Kâğıt işlem</button>
+  <button class="sekme" data-sekme="demo">Demo işlem</button>
 </nav>
 
 <div class="secici">
@@ -196,6 +198,77 @@
   </details>
 </section>
 
+<section class="panel gizli" id="panel-demo">
+  <p class="ek-giris">
+    Demo işlem, emirleri <strong>Binance Demo Mode</strong> hesabına gönderir:
+    emir gerçekten borsaya gider, dolar ya da dolmaz, ama para sahtedir. Canlı
+    hesabınıza hiçbir emir gitmez. Her emir kâğıt işlemdeki risk kapılarından
+    geçer; borsaya giren her alışın hemen ardından stop ve hedef de borsaya
+    konur.
+  </p>
+  <div id="demo-baglanti"></div>
+  <div id="demo-modlar"></div>
+  <div id="demo-hesap"></div>
+  <div id="demo-risk"></div>
+  <div id="demo-aktif"></div>
+
+  <div class="kutu" id="demo-elle">
+    <h2 id="demo-elle-baslik">Elle Demo emri</h2>
+    <p class="kart-etiket">
+      Coin ve periyot üstteki seçicilerden gelir. Giriş, Demo defterine
+      yazılan bir alış limit emridir (LIMIT_MAKER: hemen eşleşecekse borsa
+      reddeder, elle emir yeniden fiyatlanmaz). Giriş dolunca stop ve hedef
+      tek bir OCO olarak borsada bekler. Önce "Önizle" ile borsaya gidecek
+      emirleri görün.
+    </p>
+    <form id="demo-elle-form" class="form-satir" autocomplete="off">
+      <label>Giriş (alış limiti) <input name="giris" inputmode="decimal" required></label>
+      <label>Hedef <input name="hedef" inputmode="decimal" required></label>
+      <label>Stop <input name="stop" inputmode="decimal" required></label>
+      <label>Giriş bekler (mum)
+        <input name="gecerlilik_mum" type="number" min="1" max="8" value="1">
+      </label>
+      <label>En fazla tutulur (mum)
+        <input name="azami_tutma_mum" type="number" min="1" max="24" value="4">
+      </label>
+      <button class="dugme dugme-ikincil" type="button" id="demo-elle-fiyat">Demo alışını yaz</button>
+      <button class="dugme dugme-ikincil" type="submit" data-eylem="onizle">Önizle</button>
+      <button class="dugme" type="submit" data-eylem="gonder">Demo emrini gönder</button>
+    </form>
+    <p class="kart-etiket" id="demo-elle-ipucu"></p>
+    <div id="demo-elle-sonuc"></div>
+  </div>
+
+  <div id="demo-sonuclar"></div>
+  <div id="demo-gecmis"></div>
+
+  <details id="demo-ayar-kutu">
+    <summary>Emir ayarları (stop tipi, kısmi dolum, kayma)</summary>
+    <div id="demo-ayarlar"><p class="bekle">Yükleniyor…</p></div>
+  </details>
+
+  <details id="demo-ayrinti-kutu">
+    <summary>Bağlantı, istek bütçesi ve olaylar</summary>
+    <div id="demo-ayrinti"><p class="bekle">Yükleniyor…</p></div>
+  </details>
+
+  <details id="demo-sifirla-kutu">
+    <summary>Demo bot dönemini sıfırla</summary>
+    <div>
+      <p class="kart-etiket">
+        Botun Demo'daki sonuç sayımını yeni bir dönemle başlatır: bot bütçesi
+        risk limitlerindeki bütçeye döner. Binance Demo hesabındaki bakiyeye
+        dokunmaz. Eski işlemler silinmez, CSV'de kalır. Açık Demo pozisyonu ya
+        da bekleyen emir varken yapılamaz.
+      </p>
+      <form id="demo-sifirla-form" class="form-satir" autocomplete="off">
+        <label>Onay için SIFIRLA yazın <input name="onay" maxlength="20"></label>
+        <button class="dugme dugme-tehlike" type="submit">Dönemi sıfırla</button>
+      </form>
+    </div>
+  </details>
+</section>
+
 </main>
 
 <footer class="alt">
@@ -211,5 +284,6 @@
 <script src="/statik/grafik.js?v={{SURUM}}"></script>
 <script src="/statik/app.js?v={{SURUM}}"></script>
 <script src="/statik/kagit.js?v={{SURUM}}"></script>
+<script src="/statik/demo.js?v={{SURUM}}"></script>
 </body>
 </html>

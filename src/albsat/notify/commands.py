@@ -22,9 +22,10 @@ from albsat.risk import engine as risk
 HELP_TEXT = (
     "Komutlar:\n"
     "/durum — modlar, kâğıt hesap, açık pozisyonlar, bugünkü sonuç\n"
-    "/durdur — ACİL DURDUR: kâğıt işlemi kapatır, bekleyen emirleri iptal eder; "
-    "açık pozisyonların stop ve hedefi yerinde kalır\n"
-    "/durdur kapat — aynı şey, ayrıca açık pozisyonları piyasa fiyatından kapatır\n"
+    "/durdur — ACİL DURDUR: kâğıt işlemi ve Demo'yu kapatır, bekleyen girişleri iptal "
+    "eder; açık pozisyonların stop ve hedefi yerinde kalır\n"
+    "/durdur kapat — aynı şey, ayrıca açık pozisyonları kapatır (kâğıtta piyasa "
+    "fiyatından, Demo'da korumalı satışla)\n"
     "/onayla — yarı otomatik mod için (Faz 6'da açılacak)\n"
     "/yardim — bu liste"
 )
@@ -81,31 +82,61 @@ def status_text(engine: PaperEngine, *, marks: dict[str, Decimal],
     return "\n".join(lines)
 
 
+def demo_text(demo: Any, *, marks: dict[str, Decimal]) -> list[str]:
+    """Demo Mode satırları (yürütücü yoksa boş)."""
+    if demo is None:
+        return []
+    reason = demo.not_ready_reason()
+    lines = ["Demo Mode: hazır" if reason is None else f"Demo Mode: kullanılamıyor ({reason})"]
+    if demo.trader is None:
+        return lines
+    view = demo.account(marks)
+    lines.append(f"Demo bot bütçesi: nakit {_usdt(view.nakit_usdt)} USDT"
+                 + (f", özsermaye {_usdt(view.ozsermaye_usdt)} USDT"
+                    if view.ozsermaye_usdt is not None else ""))
+    for position in demo.ledger.active():
+        lines.append(f"Demo: {position.sembol} #{position.id} {position.durum_tr} "
+                     f"(giriş {position.giris}, hedef {position.hedef}, stop {position.stop})")
+    return lines
+
+
 def build_handler(
     engine: PaperEngine,
     *,
     marks: Callable[[], dict[str, Decimal]],
     connection: Callable[[], dict[str, Any] | None],
     clock: Callable[[], datetime] = utc_now,
+    demo: Any = None,
+    demo_marks: Callable[[], dict[str, Decimal]] | None = None,
 ) -> Callable[[str, str], str]:
     def handle(command: str, args: str) -> str:
         now = clock()
         if command in ("/start", "/yardim", "/yardım", "/help"):
             return HELP_TEXT
         if command == "/durum":
-            return status_text(engine, marks=marks(), connection=connection(), now=now)
+            text = status_text(engine, marks=marks(), connection=connection(), now=now)
+            extra = demo_text(demo, marks=(demo_marks or marks)())
+            return "\n".join([text, *extra]) if extra else text
         if command in ("/durdur", "/durdur_kapat"):
             close = command == "/durdur_kapat" or args.lower().startswith("kapat")
             events = engine.kill_switch(
                 close_positions=close, marks=marks(), source=SOURCE_TELEGRAM, now=now
             )
+            demo_closing = 0
+            if demo is not None:
+                demo_closing = demo.kill_switch(close_positions=close, source=SOURCE_TELEGRAM)
             parts = [
-                "⛔ Acil durdurma çalıştı. Kâğıt işlem kapandı, bütün coinler "
+                "⛔ Acil durdurma çalıştı. Kâğıt işlem ve Demo kapandı, bütün coinler "
                 "'Sadece Öneri' modunda.",
-                f"İptal edilen bekleyen emir: {len(events.iptal)}.",
+                f"İptal edilen bekleyen kâğıt emir: {len(events.iptal)}.",
             ]
+            if demo is not None and demo.trader is not None:
+                parts.append("Demo'daki bekleyen girişler borsada iptal ediliyor.")
             if close:
-                parts.append(f"Piyasa fiyatından kapatılan pozisyon: {len(events.kapanan)}.")
+                parts.append(f"Piyasa fiyatından kapatılan kâğıt pozisyon: "
+                             f"{len(events.kapanan)}.")
+                if demo_closing:
+                    parts.append(f"Korumalı satışla kapatılan Demo pozisyonu: {demo_closing}.")
             else:
                 parts.append("Açık pozisyonların stop ve hedefi yerinde. Kapatmak için: "
                              "/durdur kapat")
@@ -119,4 +150,4 @@ def build_handler(
     return handle
 
 
-__all__ = ["HELP_TEXT", "build_handler", "status_text"]
+__all__ = ["HELP_TEXT", "build_handler", "demo_text", "status_text"]

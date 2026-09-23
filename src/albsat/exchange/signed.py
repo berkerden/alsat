@@ -59,9 +59,10 @@ class StoredKey:
         return "StoredKey(<gizli>)"
 
 
-def load_key() -> StoredKey | None:
-    api_key = keychain.read(KEYCHAIN_SERVICE, ACCOUNT_API_KEY)
-    private = keychain.read(KEYCHAIN_SERVICE, ACCOUNT_PRIVATE)
+def load_key(service: str = KEYCHAIN_SERVICE) -> StoredKey | None:
+    """Anahtar Zinciri'ndeki anahtar; ``service`` Faz 5'te Demo anahtarı için ayrıdır."""
+    api_key = keychain.read(service, ACCOUNT_API_KEY)
+    private = keychain.read(service, ACCOUNT_PRIVATE)
     if api_key is None or private is None:
         return None
     return StoredKey(api_key, private)

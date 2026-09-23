@@ -1,8 +1,10 @@
 """Kâğıt işlem uçları (Faz 4; SPEC.md §4.6, §8.9, §8.10).
 
-Arayüzün durum değiştiren uçları yalnızca burada ve yalnızca ``/api/kagit/``
-altında. Hepsi **kâğıt hesap** üzerinde çalışır: Binance'e emir gönderen ya
-da API anahtarına erişen tek satır yok. Gerçek emir Faz 5'te, Demo Mode'da.
+Kâğıt işlemin durum değiştiren uçları burada ve ``/api/kagit/`` altında.
+Hepsi **kâğıt hesap** üzerinde çalışır: Binance'e emir gönderen ya da API
+anahtarına erişen tek satır yok. Tek istisna ACİL DURDUR: kâğıt işlemle
+birlikte Demo yürütücüsünü de durdurur (yürütücü üzerinden; anahtara bu
+modül dokunmaz). Demo Mode uçları ``demo_api.py``'de.
 
 Durum değiştiren her uç ``POST``'tur ve ``app.py``'deki yerel koruma
 katmanından geçer (Host başlığı, özel istek başlığı, JSON gövde, Origin).
@@ -430,6 +432,10 @@ def register(app: FastAPI, get_runtime: Callable[[], Runtime | None]) -> None:
                 {"mod": mode, "etiket": MODE_LABELS_TR[mode], "ne_zaman": when}
                 for mode, when in LOCKED.items()
             ],
+            "demo_hazir_degil": (
+                "Demo bağlantısı bu çalıştırmada kurulmadı." if runtime.demo is None
+                else runtime.demo.not_ready_reason()
+            ),
             "hesap": account_json(engine.account(marks), marks),
             "risk": meters_json(risk.metrics(engine.snapshot(now), limits, now), limits),
             "aktif": active,
@@ -655,15 +661,8 @@ def register(app: FastAPI, get_runtime: Callable[[], Runtime | None]) -> None:
     @app.post("/api/kagit/acil-durdur")
     def kagit_acil_durdur(body: KillBody) -> dict[str, Any]:
         runtime = rt()
-        events = runtime.engine.kill_switch(
-            close_positions=body.pozisyonlari_kapat, marks=runtime.marks(),
-            source=SOURCE_UI, now=utc_now(),
-        )
-        return {
-            "iptal_edilen": len(events.iptal),
-            "kapatilan": len(events.kapanan),
-            "modlar": modes_json(runtime),
-        }
+        result = runtime.kill_switch(close_positions=body.pozisyonlari_kapat, source=SOURCE_UI)
+        return {**result, "modlar": modes_json(runtime)}
 
     @app.post("/api/kagit/art-arda-sifirla")
     def kagit_art_arda_sifirla() -> dict[str, Any]:

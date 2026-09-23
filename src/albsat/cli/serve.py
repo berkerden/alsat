@@ -14,6 +14,10 @@ ve API anahtarı gerektirmez. Kâğıt işlem bu veriyle çalışır. Telegram
 kuruluysa bildirimler telefona gider. ``--cevrimdisi`` ile açılırsa
 internete hiç çıkmaz; o zaman kâğıt işlem de çalışmaz.
 
+Faz 5'ten beri Demo Mode anahtarı (``bash kurulum.sh demo-anahtar``)
+kuruluysa Demo işlem sekmesi Binance **Demo Mode**'a (sahte para) emir
+gönderir. Canlı hesaba emir gönderen kod yoktur.
+
 Her açılışta bütün coinler "Sadece Öneri" modunda başlar (SPEC §2).
 """
 
@@ -148,12 +152,21 @@ def main(argv: list[str] | None = None) -> int:
 
     port = _free_port(int(args.port))
     address = f"http://{HOST}:{port}/"
-    print(f"  Mod            : bütün coinler {MODE_TR} (Binance'e emir gönderilmez)",
+    print(f"  Mod            : bütün coinler {MODE_TR} (canlı hesaba emir gönderilmez)",
           flush=True)
-    paper_before = [item for item, mode in runtime.previous_modes.items() if mode == "kagit"]
-    if paper_before:
-        print(f"                   Önceki oturumda Kâğıt İşlem'de olanlar: "
-              f"{', '.join(paper_before)}. Devam için arayüzden yeniden seçin.", flush=True)
+    for mode, label in (("kagit", "Kâğıt İşlem"), ("demo", "Demo Mode")):
+        before = [item for item, value in runtime.previous_modes.items() if value == mode]
+        if before:
+            print(f"                   Önceki oturumda {label}'da olanlar: "
+                  f"{', '.join(before)}. Devam için arayüzden yeniden seçin.", flush=True)
+    demo = runtime.demo
+    if demo is None or demo.trader is None:
+        demo_text = (demo.key_problem if demo is not None and demo.key_problem
+                     else "kapalı")
+    else:
+        demo_text = ("anahtar bulundu; Binance Demo Mode'a (sahte para) bağlanıyor. "
+                     "Durumu Demo işlem sekmesinde.")
+    print(f"  Demo Mode      : {demo_text}", flush=True)
     print(
         "  Piyasa verisi  : "
         + ("Binance genel veri akışı (hesap bilgisi yok, API anahtarı yok)" if online
@@ -191,6 +204,9 @@ def main(argv: list[str] | None = None) -> int:
         runtime.stop()
         print("Kapatıldı. Kâğıt emirler bir sonraki açılışta kaldığı yerden işlenir.",
               flush=True)
+        if runtime.demo is not None and runtime.demo.trader is not None:
+            print("Demo'daki açık pozisyonların stop ve hedefi borsada duruyor; bir sonraki "
+                  "açılışta borsayla uzlaştırılır.", flush=True)
     return 0
 
 

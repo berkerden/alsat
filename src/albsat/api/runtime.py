@@ -1,8 +1,9 @@
-"""Faz 4'ün çalışan parçaları: kâğıt motoru, canlı döngü, bildirimler.
+"""Çalışan parçalar: kâğıt motoru, canlı döngü, bildirimler, Demo yürütücüsü.
 
 Arayüz sunucusu açılırken bir kez kurulur ve kapanırken durdurulur. Testler
 aynı nesneyi ağa çıkmadan (``online=False``) kurar; o durumda canlı döngü
-yoktur, kâğıt motoru ve bildirimler vardır.
+yoktur, kâğıt motoru ve bildirimler vardır. Demo yürütücüsü her zaman kurulur;
+ağ ya da anahtar yoksa emir gönderemez ve nedenini söyler (Faz 5).
 """
 
 from __future__ import annotations
@@ -24,6 +25,8 @@ from albsat.data.store import KlineStore
 from albsat.exchange.endpoints import Environment, endpoints_for
 from albsat.exchange.http import PublicHttp
 from albsat.exchange.ratelimit import RequestBudget
+from albsat.execution.executor import DemoExecutor
+from albsat.execution.service import build_executor
 from albsat.modes.state import MODE_PAPER, ModeStore
 from albsat.notify.base import KIND_LIMIT, MemoryNotifier
 from albsat.paper.engine import PaperEngine
@@ -44,6 +47,7 @@ class Runtime:
     engine: PaperEngine
     market: LiveMarket
     runner: LiveRunner | None = None
+    demo: DemoExecutor | None = None
     telegram: Any = None
     telegram_commands: Any = None
     telegram_note: str = ""
@@ -60,6 +64,8 @@ class Runtime:
         online: bool,
         use_telegram: bool = True,
         environment: Environment = Environment.LIVE,
+        use_demo: bool = True,
+        demo_key_loader: Any = None,
     ) -> Runtime:
         root = Path(root)
         symbols = tuple(symbols)
@@ -104,6 +110,12 @@ class Runtime:
                 http=http, notifier=notifier, stream_base=endpoints.stream,
                 ruleset_loader=lambda: _load_rules(root),
             )
+        runtime.demo = build_executor(
+            root, symbols=symbols, engine=engine, live_market=market, notifier=notifier,
+            online=online and use_demo, key_loader=demo_key_loader,
+        )
+        if runtime.runner is not None:
+            runtime.runner.demo = runtime.demo
         return runtime
 
     # --- yaşam döngüsü ------------------------------------------------
@@ -115,8 +127,12 @@ class Runtime:
             self.telegram_commands.start()
         if self.runner is not None:
             self.runner.start()
+        if self.demo is not None:
+            self.demo.start()
 
     def stop(self) -> None:
+        if self.demo is not None:
+            self.demo.stop()
         if self.runner is not None:
             self.runner.stop()
         if self.telegram_commands is not None:
@@ -135,6 +151,8 @@ class Runtime:
             self.engine,
             marks=self.marks,
             connection=lambda: self.runner.status() if self.runner else None,
+            demo=self.demo,
+            demo_marks=self.demo_marks,
         )
 
         def ignored(chat_id: int) -> None:
@@ -158,6 +176,27 @@ class Runtime:
             if price is not None:
                 result[symbol] = price
         return result
+
+    def demo_marks(self) -> dict[str, Decimal]:
+        """Demo pozisyonlarının değerlemesi: Demo defterinin en iyi alışı (canlıdan ayrı)."""
+        result = self.marks()
+        if self.demo is not None:
+            for symbol in self.symbols:
+                quote = self.demo.demo_market.quote(symbol)
+                if quote is not None:
+                    result[symbol] = quote.alis
+        return result
+
+    def kill_switch(self, *, close_positions: bool, source: str) -> dict[str, int]:
+        """ACİL DURDUR: önce kâğıt motoru (modları indirir, Demo'ya iptal isteği bırakır),
+        sonra Demo yürütücüsü (borsadaki bekleyen girişleri iptal eder, istenirse kapatır)."""
+        events = self.engine.kill_switch(close_positions=close_positions, marks=self.marks(),
+                                         source=source, now=utc_now())
+        demo_closing = 0
+        if self.demo is not None:
+            demo_closing = self.demo.kill_switch(close_positions=close_positions, source=source)
+        return {"iptal_edilen": len(events.iptal), "kapatilan": len(events.kapanan),
+                "demo_kapatilan": demo_closing}
 
     def telegram_status(self) -> dict[str, Any]:
         if self.telegram is None:

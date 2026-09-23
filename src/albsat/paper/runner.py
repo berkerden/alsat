@@ -9,7 +9,8 @@ Arayüz sunucusu açılınca arka planda başlar. İşleri:
 2. **Akış.** WebSocket'ten gelen kapanmış 1m mum kâğıt emirlerini ilerletir;
    kapanmış 15m/1h mum depoya yazılır ve öneri motoru çalışır. Yeni bir AL
    sinyali bildirim olur; coin Kâğıt İşlem modundaysa risk kapılarından
-   geçerse kâğıt emri açılır.
+   geçerse kâğıt emri açılır, Demo Mode'daysa sinyal Demo yürütücüsüne
+   (``execution.executor``) gider.
 3. **Nöbet.** Saniyede bir: uyku/uyanma (duvar saati ile tekdüze saat
    arasındaki sıçrama), akış sessizliği, yedek REST yoklaması (akış 90
    saniyeden uzun kopuksa), nabız kaydı. Kâğıt işlemde coin varken Mac'in
@@ -18,8 +19,9 @@ Arayüz sunucusu açılınca arka planda başlar. İşleri:
 Ağ istekleri ``RequestBudget``'tan geçer; bütçe izin vermezse istek
 gönderilmez ve sağlık panelinde görünür.
 
-Bu modül API anahtarı kullanmaz ve emir göndermez; "emir" burada kâğıt
-defterine yazılan kayıttır.
+Bu modül API anahtarı kullanmaz ve kendisi emir göndermez; "emir" burada
+kâğıt defterine yazılan kayıttır. Demo emirlerini yalnızca Demo yürütücüsü
+gönderir.
 """
 
 from __future__ import annotations
@@ -55,7 +57,7 @@ from albsat.exchange.market_stream import (
     stream_url,
 )
 from albsat.exchange.ratelimit import BudgetExceeded
-from albsat.modes.state import MODE_OFF, MODE_PAPER
+from albsat.modes.state import MODE_DEMO, MODE_OFF, MODE_PAPER
 from albsat.notify.base import KIND_CONNECTION, KIND_SIGNAL, KIND_SYSTEM, Notifier
 from albsat.paper.engine import OrderMeta, PaperEngine
 from albsat.paper.fills import Candle
@@ -157,6 +159,9 @@ class LiveRunner:
         self._last_heartbeat = 0.0
         self._last_guard = -SLEEP_GUARD_SECONDS
         self.sleep_guard = sleep_guard or SleepGuard()
+        #: Faz 5: Demo yürütücüsü (``execution.executor.DemoExecutor``); çalışma
+        #: zamanı kurar. Coin Demo Mode'dayken sinyal ona gider.
+        self.demo: Any = None
         names = stream_names(self.symbols, ("1m", *self.periods), extra_tickers=(USDTTRY,))
         factory = stream_factory or MarketStream
         self.stream = factory(
@@ -459,13 +464,23 @@ class LiveRunner:
 
         if mono - self._last_guard >= SLEEP_GUARD_SECONDS:
             self._last_guard = mono
-            self.sleep_guard.want(bool(self.engine.modes.paper_symbols()))
+            self.sleep_guard.want(bool(self.engine.modes.trading_symbols())
+                                  or self._demo_positions_open())
 
         if mono - self._last_heartbeat >= HEARTBEAT_SECONDS:
             self._write_heartbeat()
             self._last_heartbeat = mono
             if self.info_store.read() is not None:
                 self._refresh_filters(force=False)
+
+    def _demo_positions_open(self) -> bool:
+        """Borsada Demo emri/pozisyonu varken Mac uyumasın (koruma izlenir)."""
+        if self.demo is None:
+            return False
+        try:
+            return bool(self.demo.ledger.active())
+        except Exception:  # noqa: BLE001 - uyku kararı bir okuma hatasıyla düşmesin
+            return True
 
     def _on_wake(self, seconds: float) -> None:
         self.health.uyku_sayisi += 1
@@ -530,7 +545,7 @@ class LiveRunner:
 
     def evaluate_signals(self, sembol: str, periyot: str) -> list[SignalCard]:
         """Son kapanmış mumda kurallar tetiklendi mi? Yeni AL sinyali için
-        bildirim; coin Kâğıt İşlem modundaysa kâğıt emir."""
+        bildirim; coin Kâğıt İşlem modundaysa kâğıt emir, Demo Mode'daysa Demo emri."""
         mode = self.engine.modes.get(sembol)
         if mode == MODE_OFF:
             return []
@@ -560,6 +575,14 @@ class LiveRunner:
             self.notifier.send(_signal_text(card), kind=KIND_SIGNAL)
             if mode == MODE_PAPER and card.kural_kimligi in rules:
                 self.place_from_card(card, rules[card.kural_kimligi])
+            elif mode == MODE_DEMO and card.kural_kimligi in rules and self.demo is not None:
+                try:
+                    self.demo.place_from_card(card, rules[card.kural_kimligi])
+                except Exception as error:  # noqa: BLE001 - döngü sürsün, kullanıcı bilsin
+                    logger.exception("Demo emri açılamadı")
+                    self.health.note(f"{card.sembol} Demo emri açılamadı: {error}")
+                    self.notifier.send(f"❌ {card.sembol} sinyali için Demo emri açılamadı: "
+                                       f"{type(error).__name__}", kind=KIND_SIGNAL)
         return fresh
 
     def place_from_card(self, card: SignalCard, rule: Rule) -> None:

@@ -237,23 +237,26 @@ def test_saglik_uca_gore_emir_yetkisi_yok(client):
     assert "kullanılmıyor" in veri["api_anahtari"]
 
 
-def test_emir_uclari_yalnizca_kagit_altinda(client):
-    """Emirle ilgili her uç ``/api/kagit/`` altında: yalnızca kâğıt defter."""
+def test_emir_uclari_yalnizca_kagit_ve_demo_altinda(client):
+    """Emirle ilgili her uç ``/api/kagit/`` (kâğıt defter) ya da ``/api/demo/``
+    (Binance Demo Mode, sahte para) altında. Canlı hesaba emir ucu yok."""
     app = client.app
     yollar = {route.path for route in app.routes}
     yasak = ("order", "emir", "trade", "islem-ac", "satin-al")
     assert not [
         y for y in yollar
-        if any(k in y.lower() for k in yasak) and not y.startswith("/api/kagit/")
+        if any(k in y.lower() for k in yasak)
+        and not y.startswith(("/api/kagit/", "/api/demo/"))
     ]
 
 
-def test_yazma_metodu_yalnizca_kagit_altinda(client):
-    """Faz 3 uçları hiçbir şeyi değiştirmiyor; POST yalnızca kâğıt işlemde."""
+def test_yazma_metodu_yalnizca_kagit_ve_demo_altinda(client):
+    """Faz 3 uçları hiçbir şeyi değiştirmiyor; POST yalnızca kâğıt işlemde ve Demo'da."""
     from fastapi.routing import APIRoute
 
     for route in client.app.routes:
-        if isinstance(route, APIRoute) and not route.path.startswith("/api/kagit/"):
+        if isinstance(route, APIRoute) and not route.path.startswith(
+                ("/api/kagit/", "/api/demo/")):
             assert route.methods <= {"GET", "HEAD"}, route.path
 
 

@@ -42,6 +42,7 @@ albsat-tls-teshis = "albsat.cli.tlsteshis:main"
 albsat-arayuz = "albsat.cli.serve:main"
 albsat-telegram = "albsat.cli.telegram:main"
 albsat-anahtar = "albsat.cli.anahtar:main"
+albsat-demo = "albsat.cli.demo:main"
 
 [build-system]
 requires = ["hatchling"]

@@ -23,6 +23,9 @@ from albsat.core.fees import CommissionTable, Liquidity, Side, flat_table
 from albsat.paper.fills import PaperCosts
 
 FILENAME = "komisyon.json"
+#: Faz 5: Demo Mode hesabından ölçülen komisyon ayrı dosyada durur; canlı
+#: hesabın ölçümüyle karışmaz.
+DEMO_FILENAME = "demo-komisyon.json"
 #: Ölçülmediyse kullanılan varsayım: Binance genel standart oranı.
 ASSUMED_RATE = "0.001"
 DEFAULT_SLIPPAGE_PCT = Decimal("0.02")
@@ -44,8 +47,8 @@ class MeasuredCommissions:
 
 
 class CommissionStore:
-    def __init__(self, root: Path | str) -> None:
-        self.path = Path(root) / FILENAME
+    def __init__(self, root: Path | str, filename: str = FILENAME) -> None:
+        self.path = Path(root) / filename
 
     def write(self, payloads: Mapping[str, Mapping[str, Any]]) -> Path:
         document = {
@@ -73,13 +76,14 @@ class CommissionStore:
 
 
 def paper_costs(root: Path | str, symbol: str,
-                slippage_pct: Decimal = DEFAULT_SLIPPAGE_PCT) -> PaperCosts:
-    measured = CommissionStore(root).read()
+                slippage_pct: Decimal = DEFAULT_SLIPPAGE_PCT, *,
+                filename: str = FILENAME, account_label: str = "hesabınızdan") -> PaperCosts:
+    measured = CommissionStore(root, filename).read()
     table = measured.tablolar.get(symbol) if measured else None
     if measured is not None and table is not None:
         return PaperCosts(
             table, slippage_pct,
-            f"hesabınızdan ölçülen komisyon ({istanbul_text(measured.olcum_utc)}): "
+            f"{account_label} ölçülen komisyon ({istanbul_text(measured.olcum_utc)}): "
             f"{measured.rates_text(symbol)}; kayma %{slippage_pct}",
         )
     return PaperCosts(
@@ -105,6 +109,8 @@ def research_rates(root: Path | str) -> tuple[str, str] | None:
 __all__ = [
     "ASSUMED_RATE",
     "DEFAULT_SLIPPAGE_PCT",
+    "DEMO_FILENAME",
+    "FILENAME",
     "CommissionStore",
     "MeasuredCommissions",
     "paper_costs",
