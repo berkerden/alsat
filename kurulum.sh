@@ -15,19 +15,33 @@ cd "$(dirname "$0")" || exit 1
 # "bash kurulum.sh tarama" veri indirme adımını atlar: Faz 2 örüntü taraması
 # internete çıkmaz, veriyi diskteki ./veri klasöründen okur.
 # "bash kurulum.sh teshis" ayrıca maliyetsiz teşhis turunu da çalıştırır.
-# "bash kurulum.sh arayuz" tarama yapmaz; kurulumu tamamlayıp Faz 3
-# arayüzünü açar (yalnızca 127.0.0.1, emir göndermez).
+# "bash kurulum.sh arayuz" tarama yapmaz; kurulumu tamamlayıp arayüzü açar
+# (yalnızca 127.0.0.1; Binance'e emir göndermez, kâğıt işlem yereldir).
+# "bash kurulum.sh telegram" Telegram bildirimlerini kurar.
+# "bash kurulum.sh anahtar" yalnızca okuma izinli Binance API anahtarını kurar
+# ve hesaba özel komisyonu ölçer; "komisyon" yalnızca yeniden ölçer.
 SADECE_TARAMA=0
 TESHIS=0
 ARAYUZ=0
+TEK_ADIM=""
 case "${1:-}" in
+  "") ;;
   tarama) SADECE_TARAMA=1 ;;
   teshis) SADECE_TARAMA=1; TESHIS=1 ;;
   arayuz) ARAYUZ=1 ;;
+  telegram|anahtar|komisyon) TEK_ADIM="$1" ;;
+  *)
+    hata "Bilinmeyen seçenek: $1"
+    printf 'Kullanılabilecekler: tarama, teshis, arayuz, telegram, anahtar, komisyon\n'
+    printf 'Seçeneksiz çalıştırmak için:  bash kurulum.sh\n'
+    exit 1
+    ;;
 esac
 
 ADIM_SAYISI=5
-[ "$ARAYUZ" = "1" ] && ADIM_SAYISI=4
+if [ "$ARAYUZ" = "1" ] || [ -n "$TEK_ADIM" ]; then
+  ADIM_SAYISI=4
+fi
 
 baslik "1/$ADIM_SAYISI  Python sürümü aranıyor (3.12 veya üstü gerekiyor)"
 
@@ -96,6 +110,27 @@ else
   exit 1
 fi
 
+if [ "$TEK_ADIM" = "telegram" ]; then
+  baslik "4/$ADIM_SAYISI  Telegram bildirimleri kuruluyor"
+  printf "   Bot jetonu Mac'inizin Anahtar Zinciri'ne yazılır; dosyaya yazılmaz.\n\n"
+  python -m albsat.cli.telegram
+  exit $?
+fi
+
+if [ "$TEK_ADIM" = "anahtar" ]; then
+  baslik "4/$ADIM_SAYISI  Binance API anahtarı (yalnızca okuma) ve komisyon ölçümü"
+  printf '   Anahtar yalnızca iki şeyi okumak için kullanılır: anahtarın izinleri ve\n'
+  printf '   hesabınıza özel komisyon oranı. Emir gönderilmez, para çekilemez.\n\n'
+  python -m albsat.cli.anahtar
+  exit $?
+fi
+
+if [ "$TEK_ADIM" = "komisyon" ]; then
+  baslik "4/$ADIM_SAYISI  Hesaba özel komisyon yeniden ölçülüyor"
+  python -m albsat.cli.anahtar --olc
+  exit $?
+fi
+
 if [ "$ARAYUZ" = "1" ]; then
   baslik "4/$ADIM_SAYISI  Arayüz açılıyor"
 
@@ -106,7 +141,8 @@ if [ "$ARAYUZ" = "1" ]; then
   fi
 
   printf '   Arayüz yalnızca kendi bilgisayarınızdan erişilebilir (127.0.0.1).\n'
-  printf '   İnternete çıkmaz, API anahtarı kullanmaz, emir göndermez.\n'
+  printf "   Binance'in herkese açık fiyat akışına bağlanır; API anahtarı kullanmaz,\n"
+  printf "   Binance'e emir göndermez. Kâğıt işlemler yalnızca bu bilgisayarda kaydedilir.\n"
   printf '   Tarayıcı birkaç saniye içinde kendiliğinden açılacak.\n'
   printf '   %sKapatmak için bu pencerede Control-C tuşlayın.%s\n\n' "$KALIN" "$SIFIR"
 

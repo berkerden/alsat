@@ -1,15 +1,20 @@
-"""Arayüzü başlatan komut (Faz 3).
+"""Arayüzü başlatan komut.
 
-Kullanım (Mac'te, sanal ortam etkinken)::
+Kullanım (Mac'te)::
 
-    python -m albsat.cli.serve
+    bash kurulum.sh arayuz
 
 Sunucu **yalnızca 127.0.0.1'e** bağlanır (SPEC.md §5: "Arayüz Mac'te sadece
 127.0.0.1'e bağlansın"). Dinlenecek adres bilerek seçenek olarak sunulmuyor:
 bir bayrakla 0.0.0.0'a açılabilen yerel arayüz, er ya da geç açılır.
 
-Sunucu internete çıkmaz ve API anahtarına erişmez. Veriyi ``--veri-dizini``
-altındaki dosyalardan okur; tazeleme ayrı bir adımdır.
+Faz 4'ten beri sunucu açılınca Binance'in **genel** piyasa verisine bağlanır
+(WebSocket; koparsa REST ile yedek yoklama). Bu veri hesap bilgisi içermez
+ve API anahtarı gerektirmez. Kâğıt işlem bu veriyle çalışır. Telegram
+kuruluysa bildirimler telefona gider. ``--cevrimdisi`` ile açılırsa
+internete hiç çıkmaz; o zaman kâğıt işlem de çalışmaz.
+
+Her açılışta bütün coinler "Sadece Öneri" modunda başlar (SPEC §2).
 """
 
 from __future__ import annotations
@@ -22,6 +27,8 @@ import webbrowser
 from pathlib import Path
 
 from albsat.api.app import MODE_TR, AppState, asset_version, create_app
+from albsat.api.runtime import Runtime, attach_telegram
+from albsat.core.tls import enable_system_trust
 from albsat.strategy import rules as rulestore
 
 #: Yalnızca yerel arayüz. Değiştirilebilir bir seçenek değildir.
@@ -32,17 +39,24 @@ DEFAULT_PORT = 8756
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="albsat-arayuz",
-        description="Sadece Öneri arayüzünü yerel olarak başlatır (Faz 3)",
+        description="Arayüzü yerel olarak başlatır (yalnızca 127.0.0.1)",
     )
     parser.add_argument("--veri-dizini", default="./veri", type=Path)
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument(
-        "--butce", default="100", help="Bot bütçesi, USDT (varsayılan 100)"
+        "--butce", default="100",
+        help="Kâğıt motoru yokken kartlarda kullanılan bütçe; normalde risk limitlerinden "
+        "okunur",
     )
     parser.add_argument(
         "--risk",
         default="1.0",
-        help="İşlem başına risk, bütçenin yüzdesi (varsayılan 1.0)",
+        help="Kâğıt motoru yokken kartlarda kullanılan işlem başı risk yüzdesi",
+    )
+    parser.add_argument(
+        "--cevrimdisi",
+        action="store_true",
+        help="Canlı piyasa verisine bağlanma (internete çıkmaz; kâğıt işlem çalışmaz)",
     )
     parser.add_argument("--semboller", nargs="+", default=["BTCUSDT", "SOLUSDT"])
     parser.add_argument("--periyotlar", nargs="+", default=["15m", "1h"])
@@ -121,14 +135,40 @@ def main(argv: list[str] | None = None) -> int:
             flush=True,
         )
 
+    online = not args.cevrimdisi
+    if online:
+        # Kullanıcının ağında HTTPS'i yeniden imzalayan bir katman var; macOS
+        # güven deposu kullanılır. Doğrulama hiçbir koşulda kapatılmaz.
+        enable_system_trust()
+    runtime = Runtime.build(
+        state.veri_dizini, symbols=state.semboller, periods=state.periyotlar, online=online
+    )
+    attach_telegram(runtime)
+    state.runtime = runtime
+
     port = _free_port(int(args.port))
     address = f"http://{HOST}:{port}/"
-    print(f"  Mod            : {MODE_TR} (emir gönderilmez)", flush=True)
+    print(f"  Mod            : bütün coinler {MODE_TR} (Binance'e emir gönderilmez)",
+          flush=True)
+    paper_before = [item for item, mode in runtime.previous_modes.items() if mode == "kagit"]
+    if paper_before:
+        print(f"                   Önceki oturumda Kâğıt İşlem'de olanlar: "
+              f"{', '.join(paper_before)}. Devam için arayüzden yeniden seçin.", flush=True)
+    print(
+        "  Piyasa verisi  : "
+        + ("Binance genel veri akışı (hesap bilgisi yok, API anahtarı yok)" if online
+           else "kapalı (--cevrimdisi); kâğıt işlem çalışmaz"),
+        flush=True,
+    )
+    print(f"  Bildirimler    : {runtime.telegram_note}", flush=True)
+    print(f"  Komisyon       : {runtime.engine.costs_for(state.semboller[0]).kaynak_tr}",
+          flush=True)
     # Aynı kimlik sayfanın en altında da yazar; ikisi farklıysa tarayıcı
     # eski bir sekmeyi gösteriyordur.
     print(f"  Arayüz sürümü  : {asset_version()}", flush=True)
     print(f"  Adres          : {address}", flush=True)
-    print("\nDurdurmak için bu pencerede Control-C tuşlayın.\n", flush=True)
+    print("\nDurdurmak için bu pencerede Control-C tuşlayın.", flush=True)
+    print("Mac uyursa veri akışı durur; uyanınca kaçırılan mumlar işlenir.\n", flush=True)
 
     if not args.tarayici_acma:
         # Sunucu ayağa kalkmadan açılan sekme boş sayfa gösterir; bir saniye
@@ -137,13 +177,20 @@ def main(argv: list[str] | None = None) -> int:
 
     import uvicorn
 
-    uvicorn.run(
-        create_app(state),
-        host=HOST,
-        port=port,
-        log_level="warning",
-        access_log=False,
-    )
+    runtime.start()
+    try:
+        uvicorn.run(
+            create_app(state),
+            host=HOST,
+            port=port,
+            log_level="warning",
+            access_log=False,
+        )
+    finally:
+        print("\nKapatılıyor...", flush=True)
+        runtime.stop()
+        print("Kapatıldı. Kâğıt emirler bir sonraki açılışta kaldığı yerden işlenir.",
+              flush=True)
     return 0
 
 

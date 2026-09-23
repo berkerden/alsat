@@ -35,6 +35,7 @@ from albsat.core.filters import parse_exchange_info
 from albsat.core.tls import CERTIFICATE_HELP, enable_system_trust
 from albsat.data import vision
 from albsat.data.backfill import TooManyGaps, extend_to_now, merge_frames, repair
+from albsat.data.commission import research_rates
 from albsat.data.exchangeinfo import ExchangeInfoStore
 from albsat.data.klines import check_quality
 from albsat.data.store import KlineStore
@@ -46,6 +47,16 @@ DEFAULT_MAKER = "0.001"
 DEFAULT_TAKER = "0.001"
 
 
+def resolve_rates(maker: str | None, taker: str | None, root: Path) -> tuple[str, str]:
+    """Açıkça verilen oran > ölçülen hesap oranı > genel standart oran."""
+    measured = research_rates(root)
+    if maker is None and taker is None and measured is not None:
+        print(f"Komisyon: hesabınızdan ölçülen oran (maker {measured[0]}, "
+              f"taker {measured[1]}; veri/komisyon.json)", flush=True)
+        return measured
+    return maker or DEFAULT_MAKER, taker or DEFAULT_TAKER
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="albsat-fizibilite",
@@ -55,8 +66,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--periyotlar", nargs="+", default=["1m", "5m", "15m", "1h"])
     parser.add_argument("--gun", type=int, default=180, help="Kaç günlük geçmiş")
     parser.add_argument("--veri-dizini", default="./veri", type=Path)
-    parser.add_argument("--maker", default=DEFAULT_MAKER)
-    parser.add_argument("--taker", default=DEFAULT_TAKER)
+    # Verilmezse <veri-dizini>/komisyon.json'daki ölçülen oran (Faz 4), o da
+    # yoksa Binance'in genel standart oranı kullanılır.
+    parser.add_argument("--maker", default=None)
+    parser.add_argument("--taker", default=None)
     parser.add_argument("--spread", default="0.01", help="Beklenen spread %%")
     parser.add_argument("--kayma", default="0.02", help="Beklenen kayma %%")
     parser.add_argument("--guvenlik", default="0.05", help="Güvenlik payı %%")
@@ -105,7 +118,7 @@ def _network_failure(error: Exception) -> int:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
-    maker, taker = args.maker, args.taker
+    maker, taker = resolve_rates(args.maker, args.taker, args.veri_dizini)
     if args.bnb_indirimi:
         from decimal import Decimal
 

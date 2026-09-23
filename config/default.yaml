@@ -12,6 +12,10 @@ butce:
   # bağlayıcı olur. Risk motoru her öneride hangisinin bağladığını gösterir.
 
 risk:
+  # Faz 4: bu bölümdeki her değer arayüzden değiştirilebilir ve değişiklik
+  # veri/albsat.sqlite3 içinde saklanır. Buradaki değerler
+  # albsat.risk.limits.RiskLimits varsayılanlarıyla aynıdır;
+  # tests/test_risk_motoru.py ikisinin ayrışmadığını denetler.
   islem_basi_risk_yuzde: "1.0"
   gunluk_max_zarar_yuzde: "3.0"
   haftalik_max_dusus_yuzde: "6.0"
@@ -19,7 +23,22 @@ risk:
   art_arda_kayip_limiti: 4
   kayip_sonrasi_soguma_mum: 2
   max_es_zamanli_pozisyon: 1
+  coin_basi_max_maruziyet_yuzde: "100"
   gunluk_max_islem: 20
+  # Piyasa koşulu filtreleri (SPEC §4.6): bunlardan biri kapalıysa yeni
+  # işlem açılmaz. Ölçülemeyen koşul "geçti" sayılmaz.
+  # Fiyat WebSocket akışıyla saniyede bir gelir; akış koparsa yedek REST
+  # yoklaması dakikada birdir. 180 saniye ikisini de kapsar.
+  bayat_veri_azami_saniye: 180
+  volatilite_kati: "3"
+  spread_kati: "5"
+  spread_azami_yuzde: "0.10"
+  min_24s_hacim_usdt: "5000000"
+  btc_sert_hareket_yuzde: "3.0"
+  # Performans bozulma koruması: kural en az bu kadar kâğıt işlemden sonra
+  # beklentisiyle kıyaslanır; bu kadar standart hata altındaysa durdurulur.
+  performans_min_islem: 10
+  performans_z_esigi: "2.33"
 
 maliyet:
   # Sinyal eleme eşiğinin bileşenleri (yüzde)
@@ -37,7 +56,6 @@ emir:
   korumasiz_azami_saniye: 20
 
 veri:
-  bayat_veri_azami_saniye: 10
   periyotlar: ["1m", "5m", "15m", "1h"]
   semboller: ["BTCUSDT", "SOLUSDT"]
   gecmis_gun: 730

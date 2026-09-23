@@ -17,10 +17,16 @@ dependencies = [
   "truststore>=0.9",
   # Faz 3 arayüzü: yalnızca 127.0.0.1'e bağlanan yerel sunucu.
   # "uvicorn[standard]" DEĞİL: uvloop/httptools derleme gerektirir ve
-  # Mac'te kurulumu kırabilir; Faz 3'te WebSocket de gerekmiyor.
+  # Mac'te kurulumu kırabilir. Arayüzün kendisi WebSocket kullanmıyor.
   "fastapi>=0.115",
   "uvicorn>=0.30",
-  # Emir gönderimi ve imzalı istekler Faz 5'te eklenecek:
+  # Faz 4: Binance canlı piyasa akışına (WebSocket) bağlanan istemci.
+  # Saf Python; derleme gerektirmez.
+  "websockets>=13",
+  # Faz 4: komisyon ölçümü için Ed25519 imzası (yalnızca okuma istekleri).
+  # Mac'te hazır derlenmiş paket (wheel) olarak kurulur.
+  "cryptography>=43",
+  # Emir gönderimi Faz 5'te eklenecek:
   # binance-connector DEĞİL — PyPI'da resmen "deprecated".
   # "binance-sdk-spot>=11.3.0",
 ]
@@ -34,6 +40,8 @@ albsat-fizibilite = "albsat.cli.feasibility:main"
 albsat-oruntu = "albsat.cli.research:main"
 albsat-tls-teshis = "albsat.cli.tlsteshis:main"
 albsat-arayuz = "albsat.cli.serve:main"
+albsat-telegram = "albsat.cli.telegram:main"
+albsat-anahtar = "albsat.cli.anahtar:main"
 
 [build-system]
 requires = ["hatchling"]

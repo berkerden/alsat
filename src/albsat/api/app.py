@@ -1,18 +1,25 @@
-"""Arayüzün arkasındaki yerel sunucu (SPEC.md §8, Faz 3).
+"""Arayüzün arkasındaki yerel sunucu (SPEC.md §8).
 
-Uygulama **her zaman "Sadece Öneri" modunda açılır** (SPEC §2) ve bu fazda
-başka bir mod yoktur: emir gönderen tek bir satır kod bu katmanda
-bulunmuyor, API anahtarına erişimi de yok. Sunucu yalnızca ``127.0.0.1``e
-bağlanır (SPEC §5).
+Sunucu yalnızca ``127.0.0.1``e bağlanır (SPEC §5) ve uygulama **her açılışta
+bütün coinler "Sadece Öneri" modunda** başlar (SPEC §2).
 
-Veri kaynağı disktir: Faz 1'in indirdiği Parquet mumlar, Faz 2'nin yazdığı
-``kurallar.json`` ve veri tazeleme adımının bıraktığı ``exchangeinfo.json``.
-Sunucu açılırken internete çıkmaz; tazeleme ayrı bir adımdır ve kullanıcı
-onu bilerek çalıştırır.
+Faz 3 uçları (öneriler, kütüphane, sihirbaz, ek araçlar) diskten okur ve
+yan etkisizdir. Faz 4 ile gelen kâğıt işlem uçları ``paper_api`` dosyasında
+ve ``/api/kagit/`` altındadır; durum değiştiren uçlar yalnızca oradadır ve
+yalnızca **kâğıt hesabı** değiştirir. Bu katmanda Binance'e emir gönderen
+ya da API anahtarına erişen kod yoktur; gerçek emir Faz 5'te (Demo Mode).
 
-Hesaplayıcı uçlar (``/api/maliyet-risk``, ``/api/plan``) ``GET``tir: yan
-etkileri yoktur, saf fonksiyondur ve bağlantı paylaşılabilir. Durum
-değiştiren tek uç ``/api/gunluk/kaydet``, o da yalnızca yerel günlüğe yazar.
+**Yerel koruma.** Sunucu yalnızca bu Mac'ten erişilebilir olsa da tarayıcıda
+açık başka bir site, kullanıcının tarayıcısı üzerinden ``127.0.0.1``e istek
+atmayı deneyebilir. Bu yüzden:
+
+* ``Host`` başlığı ``127.0.0.1`` ya da ``localhost`` değilse istek reddedilir
+  (başka bir alan adının bu adrese yönlendirilmesiyle yapılan saldırı,
+  "DNS rebinding", böyle engellenir).
+* ``GET``/``HEAD`` dışındaki her istek ``X-Albsat-Istek: 1`` başlığı ve JSON
+  gövde ister; ``Origin`` ya da ``Sec-Fetch-Site`` başlığı varsa isteğin bu
+  sayfadan geldiğini göstermelidir. Başka bir sitedeki sayfa bu başlığı
+  ekleyemez: tarayıcı önce izin sorar, bu sunucu izin vermez.
 """
 
 from __future__ import annotations
@@ -21,13 +28,14 @@ import hashlib
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from albsat.api import serialize
+from albsat.api import paper_api, serialize
 from albsat.core.filters import SymbolRules
 from albsat.data.exchangeinfo import ExchangeInfoStore
 from albsat.data.klines import closed_only, interval_ms, to_utc
@@ -43,7 +51,15 @@ from albsat.strategy.journal import SignalJournal
 from albsat.strategy.rules import RuleSet, RuleStoreError
 from albsat.strategy.signals import EngineConfig, cost_threshold_text, recommend
 
+if TYPE_CHECKING:
+    from albsat.api.runtime import Runtime
+
 STATIC_DIR = Path(__file__).parent / "static"
+
+#: Arayüze yalnızca bu adlarla ulaşılır (``Host`` başlığı).
+LOCAL_HOSTS = frozenset({"127.0.0.1", "localhost"})
+#: Durum değiştiren isteklerin taşıması gereken başlık.
+REQUEST_HEADER = "X-Albsat-Istek"
 
 #: API yanıtlarında arayüz dosyalarının sürümünü taşıyan başlık. Açık bir
 #: sekme bunu kendi yüklendiği sürümle karşılaştırır.
@@ -82,9 +98,37 @@ def asset_version(directory: Path = STATIC_DIR) -> str:
     _version_cache = (signature, version)
     return version
 
-#: Uygulama bu fazda yalnızca bu modda çalışır.
+#: Uygulama her açılışta bu modda başlar (SPEC §2). Coin başına mod
+#: ``/api/kagit/durum`` → ``modlar``.
 MODE = "sadece_oneri"
 MODE_TR = "Sadece Öneri"
+
+
+def _host_name(value: str) -> str:
+    value = value.strip().lower()
+    if value.startswith("["):
+        return value.split("]", 1)[0] + "]"
+    return value.split(":", 1)[0]
+
+
+def write_problem(headers: Any) -> str | None:
+    """Durum değiştiren istek bu sayfadan gelmiyorsa sebebini döner."""
+    if headers.get(REQUEST_HEADER) != "1":
+        return "İstek arayüzün kendisinden gelmedi (eksik başlık); reddedildi."
+    content_type = (headers.get("content-type") or "").split(";", 1)[0].strip().lower()
+    if content_type != "application/json":
+        return "İstek gövdesi JSON olmalı."
+    origin = headers.get("origin")
+    if origin is not None and origin != "null":
+        parts = urlsplit(origin)
+        if parts.scheme != "http" or (parts.hostname or "") not in LOCAL_HOSTS:
+            return "İstek başka bir siteden geldi; reddedildi."
+    elif origin == "null":
+        return "İstek kaynağı belirsiz; reddedildi."
+    site = headers.get("sec-fetch-site")
+    if site is not None and site not in ("same-origin", "none"):
+        return "İstek başka bir siteden geldi; reddedildi."
+    return None
 
 
 @dataclass
@@ -96,6 +140,8 @@ class AppState:
     islem_basi_risk_yuzde: str = "1.0"
     semboller: tuple[str, ...] = ("BTCUSDT", "SOLUSDT")
     periyotlar: tuple[str, ...] = ("15m", "1h")
+    #: Faz 4: kâğıt motoru, canlı döngü, bildirimler. Yoksa kâğıt uçları 503.
+    runtime: Runtime | None = None
 
     @property
     def kural_dosyasi(self) -> Path:
@@ -111,11 +157,20 @@ class AppState:
         snapshot = ExchangeInfoStore(self.veri_dizini).read()
         return snapshot.rules_for(sembol) if snapshot else None
 
+    def budget(self) -> tuple[str, str]:
+        """(bütçe USDT, işlem başına risk %). Kâğıt motoru varsa onun limitleri.
+
+        Öneri kartı ile kâğıt işlem aynı büyüklüğü hesaplasın diye tek kaynak:
+        kullanıcı risk limitlerinde bütçeyi değiştirirse kartlar da değişir.
+        """
+        if self.runtime is not None:
+            limits = self.runtime.engine.limits
+            return str(limits.butce_usdt), str(limits.islem_basi_risk_yuzde)
+        return self.butce_usdt, self.islem_basi_risk_yuzde
+
     def engine(self) -> EngineConfig:
-        return EngineConfig(
-            butce_usdt=self.butce_usdt,
-            islem_basi_risk_yuzde=self.islem_basi_risk_yuzde,
-        )
+        budget, risk = self.budget()
+        return EngineConfig(butce_usdt=budget, islem_basi_risk_yuzde=risk)
 
     def journal(self) -> SignalJournal:
         return SignalJournal.in_directory(self.veri_dizini)
@@ -154,10 +209,10 @@ def _require_ruleset(state: AppState) -> RuleSet:
 def create_app(state: AppState) -> FastAPI:
     """Uygulamayı kurar. Test de aynı fonksiyonu çağırır."""
     app = FastAPI(
-        title="Binance Al-Sat — Sadece Öneri",
+        title="Binance Al-Sat",
         description=(
-            "Faz 3 arayüzü. Emir göndermez, API anahtarı kullanmaz, "
-            "internete çıkmaz."
+            "Yerel arayüz. Binance'e emir göndermez, API anahtarı kullanmaz; "
+            "kâğıt işlem yalnızca yerel defterde."
         ),
         docs_url=None,
         redoc_url=None,
@@ -175,6 +230,22 @@ def create_app(state: AppState) -> FastAPI:
         if request.url.path.startswith("/api/") and STATIC_DIR.exists():
             response.headers[VERSION_HEADER] = asset_version()
         return response
+
+    # Sonra eklenen katman dışta çalışır: bu kontrol her şeyden önce yapılır.
+    @app.middleware("http")
+    async def yerel_koruma(request: Request, call_next: Any) -> Any:
+        if _host_name(request.headers.get("host", "")) not in LOCAL_HOSTS:
+            return JSONResponse(
+                {"detail": "Bu arayüz yalnızca http://127.0.0.1 adresinden kullanılır."},
+                status_code=403,
+            )
+        if request.method not in ("GET", "HEAD"):
+            problem = write_problem(request.headers)
+            if problem is not None:
+                return JSONResponse({"detail": problem}, status_code=403)
+        return await call_next(request)
+
+    paper_api.register(app, lambda: state.runtime)
 
     # --- durum ---------------------------------------------------------
 
@@ -222,15 +293,22 @@ def create_app(state: AppState) -> FastAPI:
                     }
                 )
 
+        runtime = state.runtime
         return {
             "mod": MODE,
             "mod_tr": MODE_TR,
+            "modlar": None if runtime is None else [
+                {"sembol": item.sembol, "mod": item.mod, "mod_tr": item.mod_tr}
+                for item in runtime.engine.modes.all()
+            ],
+            "kagit_etkin": runtime is not None,
+            "canli": runtime is not None and runtime.runner is not None,
             "uyari": DISCLAIMER,
             "veri_dizini": str(state.veri_dizini.resolve()),
             "semboller": list(state.semboller),
             "periyotlar": list(state.periyotlar),
-            "butce_usdt": state.butce_usdt,
-            "islem_basi_risk_yuzde": state.islem_basi_risk_yuzde,
+            "butce_usdt": state.budget()[0],
+            "islem_basi_risk_yuzde": state.budget()[1],
             "veri": veri,
             "filtreler": None
             if info is None
@@ -370,8 +448,8 @@ def create_app(state: AppState) -> FastAPI:
                 giris=giris,
                 hedef=hedef,
                 stop=stop,
-                butce_usdt=butce or state.butce_usdt,
-                risk_yuzde=risk or state.islem_basi_risk_yuzde,
+                butce_usdt=butce or state.budget()[0],
+                risk_yuzde=risk or state.budget()[1],
                 maliyet=ruleset.kosu.maliyet,
                 rules=state.symbol_rules(sembol.upper()),
                 try_kuru=try_kuru,
@@ -395,7 +473,7 @@ def create_app(state: AppState) -> FastAPI:
         try:
             result = plan_module.build_plan(
                 sembol=sembol.upper(),
-                butce_usdt=butce or state.butce_usdt,
+                butce_usdt=butce or state.budget()[0],
                 dilim_sayisi=dilim,
                 maliyet=ruleset.kosu.maliyet,
                 veri_dizini=state.veri_dizini,
@@ -423,11 +501,17 @@ def create_app(state: AppState) -> FastAPI:
 
     @app.get("/api/saglik")
     def saglik() -> dict[str, Any]:
-        """Sistem sağlığı paneli (SPEC §8.9'un Faz 3'te ölçülebilen kısmı)."""
+        """Sistem sağlığı paneli (SPEC §8.9). Canlı bağlantı: ``/api/kagit/piyasa``."""
+        runtime = state.runtime
+        live = runtime is not None and runtime.runner is not None
         return {
             "mod": MODE_TR,
-            "internet_kullanimi": "yok — sunucu diskten okur",
-            "emir_yetkisi": "yok — bu fazda emir gönderen kod bulunmuyor",
+            "internet_kullanimi": (
+                "Binance genel piyasa verisi (WebSocket, kopunca REST) — hesap bilgisi yok"
+                if live else "yok — sunucu diskten okur"
+            ),
+            "emir_yetkisi": "yok — Binance'e emir gönderen kod bulunmuyor; kâğıt emirler "
+            "yalnızca yerel defterde",
             "api_anahtari": "kullanılmıyor",
             "veri_dizini": str(state.veri_dizini.resolve()),
             "kural_deposu_var": state.kural_dosyasi.exists(),
@@ -459,11 +543,14 @@ def create_app(state: AppState) -> FastAPI:
 
 
 __all__ = [
+    "LOCAL_HOSTS",
     "MODE",
     "MODE_TR",
+    "REQUEST_HEADER",
     "STATIC_DIR",
     "VERSION_HEADER",
     "AppState",
     "asset_version",
     "create_app",
+    "write_problem",
 ]

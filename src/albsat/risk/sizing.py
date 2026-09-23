@@ -32,6 +32,7 @@ from albsat.core.costs import RoundTrip
 from albsat.core.fees import Side
 from albsat.core.filters import SymbolRules
 from albsat.core.money import (
+    ONE,
     ONE_HUNDRED,
     ZERO,
     Number,
@@ -136,28 +137,47 @@ def size_position(
     risk_pct: Number,
     round_trip: RoundTrip,
     rules: SymbolRules | None = None,
+    exit_slippage_pct: Number = ZERO,
+    costs_in_risk: bool = False,
 ) -> PositionSize:
     """Stop mesafesine ve bütçeye göre pozisyon büyüklüğünü hesaplar.
 
     ``round_trip`` stop'a giden turun maliyetidir (çıkış piyasa emri); stop
     zararı komisyon dahil hesaplanır, çünkü kullanıcının cebinden çıkan tutar
     fiyat farkı değil, komisyonla birlikte olandır.
+
+    ``exit_slippage_pct`` verilirse stop'un **dolacağı** fiyat stop fiyatının
+    o kadar altında sayılır (stop tetiklenince piyasa emri olur ve aleyhe
+    kayar). Mesafe ve zarar bu fiyattan hesaplanır; böylece kayma da risk
+    bütçesinin içinde kalır. Varsayılan sıfır: Faz 3 kartı kaymasız hesaplar.
+
+    ``costs_in_risk`` açıksa miktar, **komisyon dahil** stop zararı
+    hedeflenen riski aşmayacak biçimde hesaplanır (Faz 4 risk motoru: işlem
+    başına risk sınırı kesin sınırdır). Kapalıysa miktar yalnızca fiyat
+    mesafesinden hesaplanır ve komisyonun riski aştığı durum uyarı olarak
+    yazılır (Faz 3 kartının davranışı).
     """
     entry = to_decimal(entry)
     stop = to_decimal(stop)
     budget = to_decimal(budget_usdt)
     risk_pct = to_decimal(risk_pct)
+    slippage = to_decimal(exit_slippage_pct)
 
     warnings: list[str] = []
     target_risk = budget * risk_pct / ONE_HUNDRED
-    distance = entry - stop
+    stop_fill = stop * (ONE_HUNDRED - slippage) / ONE_HUNDRED
+    distance = entry - stop_fill
 
     if entry <= ZERO:
         raise ValueError("Giriş fiyatı pozitif olmalı")
-    if distance <= ZERO:
+    if entry - stop <= ZERO:
         raise ValueError("Stop, giriş fiyatının altında olmalı")
 
-    risk_qty = target_risk / distance
+    if costs_in_risk:
+        per_unit = -round_trip.net_pnl_quote(entry, stop_fill, ONE)
+        risk_qty = target_risk / per_unit if per_unit > ZERO else target_risk / distance
+    else:
+        risk_qty = target_risk / distance
     budget_qty = budget / entry
     raw_qty = min(risk_qty, budget_qty)
     binding = Binding.BUDGET if budget_qty <= risk_qty else Binding.RISK
@@ -197,7 +217,7 @@ def size_position(
                 f"%{(needed / budget * ONE_HUNDRED) if budget > ZERO else 0:.1f}'i."
             )
 
-    loss = -round_trip.net_pnl_quote(entry, stop, quantity)
+    loss = -round_trip.net_pnl_quote(entry, stop_fill, quantity)
     if loss < ZERO:
         loss = ZERO
 

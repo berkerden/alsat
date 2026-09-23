@@ -1,4 +1,6 @@
-/* Sadece Öneri arayüzü (Faz 3).
+/* Arayüzün ana dosyası: öneriler, sihirbaz, kütüphane, ek araçlar, günlük.
+ * Kâğıt işlem sekmesi kagit.js'te; ortak yardımcılar window.Albsat ile
+ * ona açılır.
  *
  * Çerçeve yok, derleme adımı yok: sayfa doğrudan Python paketinden
  * sunuluyor. Sunucudan gelen parasal değerler METİNDİR ve öyle gösterilir;
@@ -136,6 +138,49 @@
     return govde;
   }
 
+  // Durum değiştiren istekler. Özel başlık ve JSON gövde sunucunun yerel
+  // korumasının şartı: başka bir sitedeki sayfa bu başlığı ekleyemez.
+  async function gonder(yol, govde) {
+    const yanit = await fetch(yol, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Albsat-Istek": "1" },
+      body: JSON.stringify(govde || {}),
+    });
+    surumuDenetle(yanit.headers.get("X-Arayuz-Surumu"));
+    let veri = null;
+    try { veri = await yanit.json(); } catch (hata) { veri = null; }
+    if (!yanit.ok) {
+      let mesaj = "Sunucu hatası (" + yanit.status + ")";
+      if (veri && typeof veri.detail === "string") mesaj = veri.detail;
+      else if (veri && Array.isArray(veri.detail)) {
+        mesaj = "Geçersiz değer: " + veri.detail.map(function (d) {
+          return (d.loc || []).slice(-1).join("") + " (" + d.msg + ")";
+        }).join(", ");
+      }
+      throw new Error(mesaj);
+    }
+    return veri;
+  }
+
+  // Kısa süreli bilgi kutusu (sağ altta). Eylemin sonucunu söyler.
+  function bildir(metin, tur) {
+    const kap = document.getElementById("bildirim-kutusu");
+    if (!kap) return;
+    const d = el("div", "bildirim" + (tur ? " bildirim-" + tur : ""), metin);
+    kap.appendChild(d);
+    setTimeout(function () { d.remove(); }, tur === "kotu" ? 9000 : 6000);
+  }
+
+  // Üstteki rozet: hangi coin kâğıt işlemde? Her açılışta hepsi Sadece Öneri.
+  function modRozeti(modlar) {
+    const rozet = document.getElementById("mod-rozeti");
+    if (!modlar) { rozet.textContent = durum ? durum.mod_tr : "Sadece Öneri"; return; }
+    const kagit = modlar.filter(function (m) { return m.mod === "kagit"; })
+      .map(function (m) { return m.sembol; });
+    rozet.textContent = kagit.length ? "Kâğıt işlem: " + kagit.join(", ") : "Sadece Öneri";
+    rozet.classList.toggle("rozet-kagit", kagit.length > 0);
+  }
+
   function hataKutusu(hata) {
     const k = kutu("Bir şey eksik", "kutu-uyari");
     k.appendChild(el("p", null, hata.message));
@@ -158,7 +203,7 @@
       return;
     }
 
-    document.getElementById("mod-rozeti").textContent = durum.mod_tr;
+    modRozeti(durum.modlar);
     document.getElementById("uyari-metni").textContent = durum.uyari;
 
     durum.semboller.forEach(function (s) {
@@ -170,11 +215,18 @@
 
     ustOzet();
     saglik();
+    altBoslugu();
+    window.addEventListener("resize", altBoslugu);
+    if (window.ResizeObserver) {
+      new ResizeObserver(altBoslugu).observe(document.querySelector("footer.alt"));
+    }
     sekmeleriBagla();
     formlariBagla();
 
-    sembolEl.addEventListener("change", tazele);
-    periyotEl.addEventListener("change", tazele);
+    // tazele'ye olay nesnesi geçmesin: ilk parametre sekme adıdır.
+    sembolEl.addEventListener("change", function () { tazele(); });
+    periyotEl.addEventListener("change", function () { tazele(); });
+    document.getElementById("acil-durdur").addEventListener("click", acilDurdur);
     document.getElementById("yenile").addEventListener("click", function () {
       ornekGoster = false;
       tazele();
@@ -188,6 +240,23 @@
     });
 
     tazele();
+  }
+
+  async function acilDurdur() {
+    const dugme = document.getElementById("acil-durdur");
+    dugme.disabled = true;
+    try {
+      const sonuc = await gonder("/api/kagit/acil-durdur", { pozisyonlari_kapat: false });
+      modRozeti(sonuc.modlar);
+      bildir("Acil durdurma çalıştı. Bütün coinler Sadece Öneri modunda; " +
+        sonuc.iptal_edilen + " bekleyen emir iptal edildi. Açık pozisyonların stop ve " +
+        "hedefi yerinde.", "iyi");
+      if (window.Kagit) window.Kagit.yenile();
+    } catch (hata) {
+      bildir("Acil durdurma çalışmadı: " + hata.message, "kotu");
+    } finally {
+      dugme.disabled = false;
+    }
   }
 
   function ustOzet() {
@@ -215,10 +284,20 @@
     try {
       const s = await getir("/api/saglik");
       document.getElementById("saglik-satiri").textContent =
-        "Mod: " + s.mod + " · Emir yetkisi: " + s.emir_yetkisi +
-        " · API anahtarı: " + s.api_anahtari + " · Veri: " + s.veri_dizini +
-        (SAYFA_SURUMU ? " · Arayüz sürümü: " + SAYFA_SURUMU : "");
+        "Binance'e emir gönderilmez · API anahtarı " + s.api_anahtari +
+        " · Canlı fiyat " + (durum && durum.canli ? "açık" : "kapalı") +
+        (SAYFA_SURUMU ? " · Arayüz sürümü " + SAYFA_SURUMU : "");
+      altBoslugu();
     } catch (hata) { /* sağlık satırı olmadan da çalışır */ }
+  }
+
+  // Alt şerit sabit durur ve dar ekranda uyarı metni birkaç satıra
+  // sarar. Sayfanın altındaki içerik şeridin altında kalıp tıklanamaz
+  // olmasın diye boşluk şeridin gerçek yüksekliğinden hesaplanır.
+  function altBoslugu() {
+    const alt = document.querySelector("footer.alt");
+    if (!alt) return;
+    document.documentElement.style.setProperty("--alt-yukseklik", alt.offsetHeight + "px");
   }
 
   function sekmeleriBagla() {
@@ -240,6 +319,7 @@
 
   function tazele(sekme) {
     const hangi = sekme || etkinSekme();
+    if (window.Kagit) window.Kagit.etkin(hangi === "kagit");
     if (hangi === "oneriler") { onerileriYukle(); grafikYukle(); }
     if (hangi === "sihirbaz") sihirbazYukle();
     if (hangi === "kutuphane") kutuphaneYukle();
@@ -698,6 +778,14 @@
     }
     yaz("gunluk-icerik", k);
   }
+
+  window.Albsat = {
+    el: el, kutu: kutu, alanlar: alanlar, liste: liste, tablo: tablo,
+    getir: getir, gonder: gonder, yaz: yaz, hataKutusu: hataKutusu,
+    yuzde: yuzde, oran: oran, isaret: isaret, bildir: bildir, modRozeti: modRozeti,
+    sembol: function () { return sembolEl.value; },
+    periyot: function () { return periyotEl.value; },
+  };
 
   baslat();
 })();

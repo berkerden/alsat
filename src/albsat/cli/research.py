@@ -29,6 +29,7 @@ from albsat.backtest import run as run_backtest
 from albsat.backtest.benchmarks import buy_and_hold, random_entry_backtest
 from albsat.core.costs import minimum_meaningful_target, round_trip_for
 from albsat.core.fees import Liquidity, flat_table
+from albsat.data.commission import research_rates
 from albsat.data.klines import closed_only, to_utc
 from albsat.data.store import KlineStore
 from albsat.features import FeatureSet, build_features
@@ -51,6 +52,16 @@ DEFAULT_WINDOWS = [2, 3, 4]
 
 DEFAULT_MAKER = "0.001"
 DEFAULT_TAKER = "0.001"
+
+
+def resolve_rates(maker: str | None, taker: str | None, root: Path) -> tuple[str, str]:
+    """Açıkça verilen oran > ölçülen hesap oranı > genel standart oran."""
+    measured = research_rates(root)
+    if maker is None and taker is None and measured is not None:
+        print(f"Komisyon: hesabınızdan ölçülen oran (maker {measured[0]}, "
+              f"taker {measured[1]}; veri/komisyon.json)", flush=True)
+        return measured
+    return maker or DEFAULT_MAKER, taker or DEFAULT_TAKER
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -76,8 +87,10 @@ def build_parser() -> argparse.ArgumentParser:
         "(varsayılan: <veri-dizini>/kurallar.json). Faz 3 öneri motoru "
         "bu dosyayı okur.",
     )
-    parser.add_argument("--maker", default=DEFAULT_MAKER)
-    parser.add_argument("--taker", default=DEFAULT_TAKER)
+    # Verilmezse <veri-dizini>/komisyon.json'daki ölçülen oran (Faz 4), o da
+    # yoksa Binance'in genel standart oranı kullanılır.
+    parser.add_argument("--maker", default=None)
+    parser.add_argument("--taker", default=None)
     parser.add_argument("--spread", default="0.01", help="Beklenen spread %%")
     parser.add_argument("--kayma", default="0.02", help="Beklenen kayma %%")
     parser.add_argument("--guvenlik", default="0.05", help="Güvenlik payı %%")
@@ -148,7 +161,7 @@ def _data_span(sections: list[_Section]) -> tuple[str, str]:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
-    maker, taker = args.maker, args.taker
+    maker, taker = resolve_rates(args.maker, args.taker, args.veri_dizini)
     spread, slippage, safety = args.spread, args.kayma, args.guvenlik
     if args.bnb_indirimi:
         maker = str(Decimal(maker) * Decimal("0.75"))

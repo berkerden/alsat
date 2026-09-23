@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Binance Al-Sat — Sadece Öneri</title>
+<title>Binance Al-Sat</title>
 <!-- {{SURUM}} sunucu tarafından dosyaların içerik özetiyle değiştirilir;
      dosya değişince adres de değişir, tarayıcı eski kopyayı kullanamaz. -->
 <meta name="arayuz-surumu" content="{{SURUM}}">
@@ -19,7 +19,13 @@
     <h1>Binance Al-Sat</h1>
     <span class="rozet rozet-mod" id="mod-rozeti">Sadece Öneri</span>
   </div>
-  <div class="ust-sag" id="veri-ozeti">Yükleniyor…</div>
+  <div class="ust-sag">
+    <span id="veri-ozeti">Yükleniyor…</span>
+    <!-- Her sekmeden erişilebilir (SPEC §4.6). Kâğıt işlemi kapatır, bekleyen
+         emirleri iptal eder; açık pozisyonların stop ve hedefi yerinde kalır. -->
+    <button id="acil-durdur" class="dugme dugme-tehlike" type="button"
+            title="Kâğıt işlemi kapatır, bekleyen emirleri iptal eder">ACİL DURDUR</button>
+  </div>
 </header>
 
 <nav class="sekmeler" id="sekmeler">
@@ -28,6 +34,7 @@
   <button class="sekme" data-sekme="kutuphane">Örüntü kütüphanesi</button>
   <button class="sekme" data-sekme="ek">Ek araçlar</button>
   <button class="sekme" data-sekme="gunluk">Sinyal günlüğü</button>
+  <button class="sekme" data-sekme="kagit">Kâğıt işlem</button>
 </nav>
 
 <div class="secici">
@@ -112,6 +119,83 @@
   <div id="gunluk-icerik"><p class="bekle">Yükleniyor…</p></div>
 </section>
 
+<section class="panel gizli" id="panel-kagit">
+  <p class="ek-giris">
+    Kâğıt işlem gerçek piyasa fiyatıyla çalışır ama <strong>para kullanmaz</strong>:
+    emirler yalnızca bu bilgisayardaki deftere yazılır, Binance'e hiçbir emir
+    gitmez. Komisyon ve kayma gerçek oranlarla düşülür.
+  </p>
+  <div id="kagit-baglanti"></div>
+  <div id="kagit-modlar"></div>
+  <div id="kagit-hesap"></div>
+  <div id="kagit-risk"></div>
+  <div id="kagit-aktif"></div>
+
+  <div class="kutu" id="elle-emir">
+    <h2 id="elle-baslik">Elle kâğıt emir</h2>
+    <p class="kart-etiket">
+      Coin ve periyot üstteki seçicilerden gelir. Giriş bir alış limit emridir
+      (deftere yazılır, hemen eşleşmez). Hedef ve stopu siz belirlersiniz;
+      emir, kural sinyalleriyle aynı risk kapılarından geçer. Elle emirlerin
+      sonuçları kural sonuçlarından ayrı sayılır.
+    </p>
+    <form id="elle-form" class="form-satir" autocomplete="off">
+      <label>Giriş (alış limiti) <input name="giris" inputmode="decimal" required></label>
+      <label>Hedef <input name="hedef" inputmode="decimal" required></label>
+      <label>Stop <input name="stop" inputmode="decimal" required></label>
+      <label>Giriş bekler (mum)
+        <input name="gecerlilik_mum" type="number" min="1" max="8" value="1">
+      </label>
+      <label>En fazla tutulur (mum)
+        <input name="azami_tutma_mum" type="number" min="1" max="24" value="4">
+      </label>
+      <button class="dugme dugme-ikincil" type="button" id="elle-fiyat">Güncel alışı yaz</button>
+      <button class="dugme dugme-ikincil" type="submit" data-eylem="sina">Kapıları sına</button>
+      <button class="dugme" type="submit" data-eylem="ac">Kâğıt emri aç</button>
+    </form>
+    <p class="kart-etiket" id="elle-ipucu"></p>
+    <div id="elle-sonuc"></div>
+  </div>
+
+  <div id="kagit-sonuclar"></div>
+  <div id="kagit-gecmis"></div>
+
+  <details id="kagit-limitler-kutu">
+    <summary>Risk limitleri</summary>
+    <div id="kagit-limitler"><p class="bekle">Yükleniyor…</p></div>
+  </details>
+
+  <details id="kagit-piyasa-kutu">
+    <summary>Piyasa koşulları ve bağlantı</summary>
+    <div id="kagit-piyasa"><p class="bekle">Yükleniyor…</p></div>
+  </details>
+
+  <details id="kagit-bildirim-kutu">
+    <summary>Bildirimler (Telegram)</summary>
+    <div id="kagit-bildirimler"><p class="bekle">Yükleniyor…</p></div>
+  </details>
+
+  <details id="kagit-denetim-kutu">
+    <summary>Denetim kaydı</summary>
+    <div id="kagit-denetim"><p class="bekle">Yükleniyor…</p></div>
+  </details>
+
+  <details id="kagit-sifirla-kutu">
+    <summary>Kâğıt hesabı sıfırla</summary>
+    <div>
+      <p class="kart-etiket">
+        Yeni bir dönem açar: bakiye, risk limitlerindeki bot bütçesine döner ve
+        sonuç özetleri sıfırdan sayılır. Eski işlemler silinmez, CSV'de kalır.
+        Bekleyen emir ya da açık pozisyon varken yapılamaz.
+      </p>
+      <form id="sifirla-form" class="form-satir" autocomplete="off">
+        <label>Onay için SIFIRLA yazın <input name="onay" maxlength="20"></label>
+        <button class="dugme dugme-tehlike" type="submit">Hesabı sıfırla</button>
+      </form>
+    </div>
+  </details>
+</section>
+
 </main>
 
 <footer class="alt">
@@ -122,7 +206,10 @@
   <p class="alt-kucuk" id="saglik-satiri"></p>
 </footer>
 
+<div id="bildirim-kutusu" class="bildirim-kutusu" role="status" aria-live="polite"></div>
+
 <script src="/statik/grafik.js?v={{SURUM}}"></script>
 <script src="/statik/app.js?v={{SURUM}}"></script>
+<script src="/statik/kagit.js?v={{SURUM}}"></script>
 </body>
 </html>

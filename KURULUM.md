@@ -120,7 +120,7 @@ birkaç saniye içinde kendiliğinden açılır; açılmazsa terminalde yazan ad
 **Arayüzü kapatmak için** o terminal penceresinde `Control` tuşuna basılı
 tutup `C` tuşuna basın. Pencereyi kapatmak da kapatır.
 
-Arayüzde beş sekme var:
+Arayüzde altı sekme var:
 
 | Sekme | Ne gösterir |
 |---|---|
@@ -129,16 +129,19 @@ Arayüzde beş sekme var:
 | Örüntü kütüphanesi | Kabul edilen kurallar ve (ayrı başlıkta) kabul edilmeyen adaylar |
 | Ek araçlar | İzleme, maliyet/risk hesabı, disiplinli alım planı |
 | Sinyal günlüğü | Önerilen ile gerçekleşen arasındaki fark |
+| Kâğıt işlem | Parasız hesap, risk sınırları, elle kâğıt emir, sonuçlar, limitler |
 
 ### Arayüz hakkında bilmeniz gerekenler
 
 - **Yalnızca sizin bilgisayarınızdan erişilebilir.** Adres `127.0.0.1` ile
   başlıyor; bu "bu bilgisayar" demektir. Aynı ağdaki başka bir cihaz açamaz.
-- **Emir göndermez.** Bu fazda emir gönderen kod yok. Üstteki "Sadece Öneri"
-  rozeti bunu gösteriyor.
-- **İnternete çıkmaz.** Diskteki veriyi okur. Veriyi tazelemek için
-  `bash kurulum.sh` (seçeneksiz) çalıştırmanız gerekir.
+- **Binance'e emir göndermez.** Emir gönderen kod yok. Kâğıt işlemler yalnızca
+  bu bilgisayardaki deftere yazılır.
+- **Binance'in herkese açık fiyat akışına bağlanır.** Kâğıt işlem canlı fiyatla
+  çalışır. Bu akış için hesap ya da anahtar gerekmez.
 - **API anahtarı kullanmaz.** Anahtar istemiyor, okumuyor.
+- **Her açılışta "Sadece Öneri" modunda başlar.** Önceki açılışta kâğıt işlemde
+  olan coin kendiliğinden kâğıt işleme dönmez; sekmede tekrar açmanız gerekir.
 
 ### "Önerilecek kural yok" yazıyorsa
 
@@ -150,6 +153,76 @@ bulamadığı bir şeyi varmış gibi göstermiyor.
 Kartın nasıl göründüğünü merak ediyorsanız "Kart şablonunu örnek kuralla
 göster" düğmesine basın. O kart **uydurma bir kuralla** doldurulmuştur ve
 üstünde öyle yazar; bir öneri değildir.
+
+## 6. Kâğıt işlem
+
+**Kâğıt işlem** sekmesinde, "Modlar" kutusunda coinin yanındaki listeden
+**Kâğıt İşlem**'i seçin. O coinde parasız bir hesapla işlem açılabilir hâle
+gelir. Para kullanılmaz; Binance'e hiçbir emir gitmez.
+
+- **Elle emir:** "Elle kâğıt emir" kutusuna giriş, hedef ve stop fiyatını
+  yazın. Önce **Kapıları sına**'ya basın: emir açılmadan, hangi risk kapısının
+  neden açık ya da kapalı olduğu görünür. Uygunsa **Kâğıt emri aç**.
+- **Uygulama açıldıktan sonraki ilk 5 dakika** yeni emir açılmaz; uygulama
+  spread'in normal değerini ölçüyor. Bu bir arıza değil, ekranda yazar.
+- **ACİL DURDUR** (sağ üstte, kırmızı): bütün coinleri Sadece Öneri'ye alır,
+  bekleyen emirleri iptal eder.
+- **Mac uykusu:** kâğıt işlemde coin varken uygulama Mac'in kendiliğinden
+  uyumasını engeller. Kapak kapanırsa Mac yine uyur; uyandığında kaçırılan
+  süre işlenir.
+- **Sonuçlar:** "İşlem geçmişi" kutusundaki **CSV indir** düğmesi bütün
+  kâğıt işlemleri Excel'de açılabilen bir dosyaya yazar.
+
+## 7. Telegram bildirimleri (isteğe bağlı)
+
+Telefonunuza bildirim gelmesi ve `/durum`, `/durdur` komutlarını
+kullanabilmek için bir kez yapılır. Telegram uygulaması telefonunuzda kurulu
+olmalı.
+
+```bash
+cd ~/Desktop/alsat && bash kurulum.sh telegram
+```
+
+Betik adımları ekrana tek tek yazar:
+
+1. Telegram'da **@BotFather** hesabını açın (mavi tikli olan) ve `/newbot`
+   yazın. Botunuza bir ad, sonra sonu `bot` ile biten bir kullanıcı adı verin.
+2. BotFather size bir **jeton** verir (`1234567890:AAH...` gibi). Onu kopyalayıp
+   Terminal'e yapıştırın. **Yapıştırdığınızda ekranda hiçbir şey görünmez**;
+   bu normaldir, gizlilik içindir. `Enter`'a basın.
+3. Betik botunuzun adresini yazar. Telegram'da botu açıp **Başlat**'a basın.
+4. Betik "Bu siz misiniz?" diye sorar; `e` yazıp `Enter`.
+5. Telefonunuza bir deneme mesajı gelir.
+
+Jeton bir şifredir: kimseyle paylaşmayın, Claude dahil hiçbir sohbete
+yapıştırmayın. Mac'in Anahtar Zinciri'nde saklanır.
+
+Arayüz açıksa kapatıp (`Control-C`) yeniden açın:
+`bash kurulum.sh arayuz`.
+
+## 8. Komisyonu ölçmek (isteğe bağlı, API anahtarı gerekir)
+
+Uygulama hesabınıza özel komisyon oranını bilmiyorsa Binance'in genel oranını
+(%0.1) varsayar ve ekranda "varsayım" diye yazar. Gerçek oranı ölçmek için:
+
+```bash
+cd ~/Desktop/alsat && bash kurulum.sh anahtar
+```
+
+Betik Mac'inizde bir anahtar çifti üretir ve ekrana bir **genel anahtar** metni
+yazar (`BEGIN` ile başlayıp `END` ile biten). Sonra:
+
+1. Tarayıcıda binance.com → profil simgesi → **Hesap → API Yönetimi → API
+   Oluştur**.
+2. **Kendi ürettiğim** (Self-generated) seçeneğini seçin, ekrandaki metni
+   `BEGIN` ve `END` satırları dahil yapıştırın.
+3. Anahtar oluşunca **yalnızca "Okumayı etkinleştir"** açık kalsın. Para
+   çekme, Spot işlem, Margin ve Vadeli işlem kapalı olsun.
+4. Binance'in gösterdiği **API Key**'i kopyalayıp Terminal'e yapıştırın.
+
+Betik anahtarın izinlerini okur; para çekme izni açıksa anahtarı kullanmayı
+reddeder. Sonra komisyon oranlarınızı okuyup kaydeder. Özel anahtar Mac'inizden
+hiç çıkmaz; Binance'e yalnızca genel yarısı verilir.
 
 ## "Güvenli bağlantı kurulamadı" / sertifika hatası alırsanız
 

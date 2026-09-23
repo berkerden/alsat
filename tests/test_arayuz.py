@@ -6,8 +6,10 @@
    parasal değerlerde yasak (SPEC §3) ve ``str(Decimal)`` küçük sayılarda
    ``9.9E-7`` üretir; kullanıcı bunu okuyamaz. Test, gelen değerin metin
    olduğunu ve bilimsel gösterim içermediğini doğruluyor.
-2. **Mod.** Uygulama "Sadece Öneri" modunda; emir gönderen bir uç yok,
-   API anahtarı kullanılmıyor ve sunucu yalnızca 127.0.0.1'e bağlanıyor.
+2. **Mod.** Uygulama "Sadece Öneri" modunda açılıyor; Binance'e emir
+   gönderen bir uç yok (kâğıt emir uçları yalnızca ``/api/kagit/`` altında,
+   ayrıntısı ``test_kagit_arayuz.py``'de), API anahtarı kullanılmıyor ve
+   sunucu yalnızca 127.0.0.1'e bağlanıyor.
 """
 from __future__ import annotations
 
@@ -55,7 +57,7 @@ def client(tmp_path):
         veri_dizini=tmp_path, butce_usdt="100", islem_basi_risk_yuzde="1.0",
         semboller=("BTCUSDT",), periyotlar=("15m", "1h"),
     )
-    return TestClient(create_app(state))
+    return TestClient(create_app(state), base_url="http://127.0.0.1")
 
 
 @pytest.fixture
@@ -66,7 +68,7 @@ def bos_client(tmp_path):
         veri_dizini=tmp_path, butce_usdt="100", islem_basi_risk_yuzde="1.0",
         semboller=("BTCUSDT",), periyotlar=("15m",),
     )
-    return TestClient(create_app(state))
+    return TestClient(create_app(state), base_url="http://127.0.0.1")
 
 
 # --- her uç ayakta ----------------------------------------------------------
@@ -99,7 +101,7 @@ def test_sayfa_ve_statik_dosyalar_servis_ediliyor(client):
     sayfa = client.get("/")
     assert sayfa.status_code == 200
     assert "Sadece Öneri" in sayfa.text
-    for dosya in ("style.css", "app.js", "grafik.js"):
+    for dosya in ("style.css", "app.js", "grafik.js", "kagit.js"):
         assert client.get(f"/statik/{dosya}").status_code == 200
 
 
@@ -235,20 +237,23 @@ def test_saglik_uca_gore_emir_yetkisi_yok(client):
     assert "kullanılmıyor" in veri["api_anahtari"]
 
 
-def test_emir_gonderen_uc_yok(client):
-    """Faz 3'te emir gönderen bir uç bulunmamalı."""
+def test_emir_uclari_yalnizca_kagit_altinda(client):
+    """Emirle ilgili her uç ``/api/kagit/`` altında: yalnızca kâğıt defter."""
     app = client.app
     yollar = {route.path for route in app.routes}
     yasak = ("order", "emir", "trade", "islem-ac", "satin-al")
-    assert not [y for y in yollar if any(k in y.lower() for k in yasak)]
+    assert not [
+        y for y in yollar
+        if any(k in y.lower() for k in yasak) and not y.startswith("/api/kagit/")
+    ]
 
 
-def test_yazma_metodu_yok(client):
-    """Arayüz hiçbir şeyi değiştirmiyor; hepsi GET."""
+def test_yazma_metodu_yalnizca_kagit_altinda(client):
+    """Faz 3 uçları hiçbir şeyi değiştirmiyor; POST yalnızca kâğıt işlemde."""
     from fastapi.routing import APIRoute
 
     for route in client.app.routes:
-        if isinstance(route, APIRoute):
+        if isinstance(route, APIRoute) and not route.path.startswith("/api/kagit/"):
             assert route.methods <= {"GET", "HEAD"}, route.path
 
 
@@ -300,7 +305,7 @@ def test_grafik_yuksekligi_canvas_ozniteliginden_geri_okunmuyor():
 # sunucu tarayıcıya hiçbir önbellek talimatı vermiyordu.
 
 def test_hicbir_yanit_tarayicida_saklanmiyor(client):
-    for yol in ("/", "/statik/grafik.js", "/statik/app.js",
+    for yol in ("/", "/statik/grafik.js", "/statik/app.js", "/statik/kagit.js",
                 "/statik/style.css", "/api/durum"):
         yanit = client.get(yol)
         assert yanit.headers.get("cache-control") == "no-store", yol
@@ -313,7 +318,7 @@ def test_sayfa_surumlu_adreslerle_geliyor(client):
     sayfa = client.get("/").text
     assert "{{SURUM}}" not in sayfa
     assert f'<meta name="arayuz-surumu" content="{surum}">' in sayfa
-    for dosya in ("style.css", "grafik.js", "app.js"):
+    for dosya in ("style.css", "grafik.js", "app.js", "kagit.js"):
         assert f"/statik/{dosya}?v={surum}" in sayfa
 
 
