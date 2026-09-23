@@ -310,7 +310,8 @@ hâle gelmesi, Tam Otomatik modun kendisiyle birlikte Faz 6'dadır.
 Bu uzak geliştirme ortamı Binance adreslerine çıkamadığı için canlı akış burada
 **gerçek Binance'e karşı sınanamadı**. Mesaj biçimleri Binance belgelerinden
 alınan örneklerle, yeniden bağlanma ve yedek yoklama sahte akışla sınandı.
-İlk gerçek bağlantı Berk'in Mac'inde olacak.
+İlk gerçek bağlantı 23 Eylül 2026'da Berk'in Mac'inde kuruldu ve hatasız
+çalıştı.
 
 ---
 
@@ -337,12 +338,13 @@ Komisyon koda sabit yazılmaz. Ölçülmediyse Binance'in genel standart oranı
 İmzalı istek sınıfında emir gönderen, iptal eden ya da hesabı değiştiren hiçbir
 yöntem yoktur; izin verilen adresler iki satırlık bir listeyle sınırlıdır.
 
-**Açık bir belirsizlik.** Binance belgeleri Ed25519'u REST imza yöntemi olarak
-listeliyor, ama kendi üretilmiş Ed25519 anahtarının `/sapi/` adreslerinde
-kabul edildiği bu ortamdan doğrulanamadı. Kabul edilmezse izinler okunamaz,
-komut "Binance'e sorulamadı" der ve **komisyonu okumadan durur**; anahtar
-kullanılmaz, uygulama %0.1 varsayımıyla çalışmaya devam eder. Güvenli taraf
-seçildi: izinleri görülmemiş bir anahtarla hiçbir şey okunmaz.
+**Çözülen belirsizlik.** Kendi üretilmiş Ed25519 anahtarının `/sapi/`
+adreslerinde kabul edilip edilmeyeceği bu ortamdan doğrulanamamıştı. Kod
+güvenli tarafı seçer: izinler okunamazsa komut "Binance'e sorulamadı" der ve
+**komisyonu okumadan durur**. 23 Eylül 2026'da Berk'in Mac'inde anahtar kabul
+edildi, izin kontrolü ve komisyon okuması çalıştı. Ölçülen oran maker ve taker
+için **%0.1**; Faz 1 ve Faz 2'de varsayılan oranla aynı, önceki sonuçlar
+geçerli.
 
 ---
 
@@ -444,5 +446,15 @@ olmaması, telefonda alt şeridin düğmeleri kapatmaması.
 - **Kâğıt işlem bir avantaj üretmez, ölçer.** Faz 2'nin bulgusu hâlâ geçerli:
   bu kapsamda maliyet sonrası yön bilgisi bulunmadı.
 - **Komisyon ölçülmediyse %0.1 varsayımdır.** Arayüz hangi oranın kullanıldığını
-  ve kaynağını her zaman yazar.
-- **Canlı akış ilk kez Berk'in Mac'inde gerçek Binance'e bağlanacak** (§10).
+  ve kaynağını her zaman yazar ("Komisyon ve kayma" satırları).
+- **Mac'te henüz sınanmayanlar:** uyku engeli (`caffeinate`), pil uyarısı
+  (`pmset`) ve Telegram kurulumu. Kodları testli ama Berk'in Mac'inde
+  çalıştırılmadı.
+
+---
+
+## 17. Onay
+
+**Faz 4, 23 Eylül 2026'da onaylandı.** Onaydan önce Berk'in Mac'inde
+doğrulananlar: arayüz açıldı, canlı Binance akışı bağlandı, hata yok;
+`bash kurulum.sh anahtar` salt okuma anahtarıyla komisyonu ölçtü (%0.1).

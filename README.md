@@ -27,7 +27,7 @@ Fazlar arası devir notu: [`docs/DEVIR-NOTU.md`](docs/DEVIR-NOTU.md)
 | 1 | Veri katmanı + **fizibilite taraması** | ✅ Onaylandı |
 | 2 | Örüntü keşif + backtest motoru | ✅ Onaylandı |
 | 3 | Periyot sihirbazı + öneri motoru + arayüz | ✅ Onaylandı |
-| 4 | Risk motoru + kâğıt işlem + Telegram | 🔎 Onay bekliyor |
+| 4 | Risk motoru + kâğıt işlem + Telegram | ✅ Onaylandı |
 | 5 | Emir yürütme (**Demo Mode**) | ⏳ |
 | 6 | Canlı yarı otomatik → tam otomatik | ⏳ |
 | 7 | VPS dağıtımı | ⏳ |

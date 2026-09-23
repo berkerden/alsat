@@ -357,7 +357,7 @@
             { metin: g.gecti ? "koşul sağlandı" : "yetersiz", sinif: g.gecti ? "iyi" : "sari" }];
         })));
     }
-    k.appendChild(el("h3", null, "Maliyet varsayımı"));
+    k.appendChild(el("h3", null, "Komisyon ve kayma"));
     Object.keys(v.maliyet).forEach(function (s) {
       k.appendChild(el("p", "kart-etiket", s + ": " + v.maliyet[s]));
     });
