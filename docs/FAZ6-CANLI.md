@@ -232,7 +232,7 @@ yazdığı alanlar yenilemede silinmez.
 3. Hesap akışına bağlanır.
 4. Gerçek hesaba **dolmaması beklenen** bir alış gönderir (en iyi alışın
    yaklaşık %5 altında, en küçük tutarın 1,5 katı, tavanı ve serbest USDT'yi
-   aşmaz; en küçük tutar 5 USDT iken yaklaşık 7,5 USDT). Göndermeden önce coin adını
+   aşmaz; Berk'in hesabında 79952 × 0.0001 ≈ 8,00 USDT). Göndermeden önce coin adını
    yazdırır.
 5. Emrin akıştan geldiğini ve borsada göründüğünü doğrular.
 6. Emri iptal eder ve iptali doğrular.
@@ -325,8 +325,27 @@ Sonuç:
 - **Canlı yol bir avantaj üretmez.** Faz 2'nin bulgusu geçerli: bu kapsamda
   maliyet sonrası yön bilgisi bulunmadı. Canlı mekanizma çalışsa da işlem
   yapmaya değer bir kural yok.
-- **Gerçek hesapta görülenler** Berk'in Mac'indeki sınamadan sonra bu bölüme
-  yazılacak. Şimdiye kadar yalnızca sahte borsayla sınandı.
+- **Gerçek hesapta görülenler (23 Eylül 2026, Berk'in Mac'i).** Berk
+  adımları kendisi çalıştırdı:
+  - `canli-anahtar`: kendi üretilmiş Ed25519 anahtar canlıda kabul edildi,
+    saat farkı 97 ms. `apiRestrictions` para çekmeyi kapalı, Spot işlemi
+    açık, IP kısıtını kapalı okudu ve izinler uygun bulundu. Komisyon
+    BTCUSDT ve SOLUSDT'de maker ve taker %0.1 (Faz 1-2 varsayımıyla aynı).
+    Hesapta Berk'in kendi verdiği bir SOL emri vardı; uygulama ona dokunmadı.
+  - `canli-sina`: altı adımın hepsi geçti. 79952'den 0.0001 BTC'lik
+    (≈ 8 USDT) OTOCO kabul edildi, akıştan NEW geldi, borsada NEW göründü,
+    iptal borsada ve akışta görüldü. Hiç alım olmadı.
+  - Arayüzden elle canlı emir (BTCUSDT 15m, Yarı Otomatik): giriş
+    84218.9'dan doldu, borsa hedef ve stopu koydu (korumasız süre 0,0 sn).
+    "Pozisyonu kapat" ile 84236.91'den satıldı. Net −0,01 USDT (%−0,166);
+    fiyat farkı küçük artıydı, zarar iki komisyondan geldi (ödenen komisyon
+    0,01 USDT). Sonuç "Elle" satırında sayıldı, kapıya girmedi.
+  - Zararla kapanan işlemden sonra risk motorunun **kayıp sonrası soğuma**
+    kapısı aynı coinde yeni emri bekletti; canlıda da çalışıyor.
+  - Görülmeyenler: Yarı Otomatik önerisi (kabul edilmiş kural yok), Tam
+    Otomatik (kapıda kilitli), izin bozulunca canlı modların kapanması,
+    Binance'in IP kısıtı sayfasında yazdığı güncel kural (ekran görüntüsü
+    gelmedi; §8 hâlâ doğrulanmamış). Bunlar yalnızca testle sınandı.
 - Mac uyurken borsadaki stop ve hedef çalışır, ama yeniden koruma ve izin
   denetimi uygulama uyanınca yapılır.
 
@@ -334,4 +353,5 @@ Sonuç:
 
 ## 12. Onay
 
-Faz 6 henüz onaylanmadı. Onay, Berk'in Mac'indeki sınamadan sonra istenecek.
+Faz 6 henüz onaylanmadı. Berk'in Mac'indeki sınama geçti (§11); onay
+bekleniyor.
