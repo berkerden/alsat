@@ -274,12 +274,14 @@ gerçek emirle sınanır. Sıra:
 
 1. `canli-anahtar`: anahtarın oluşturulması için ayrıca yazılı onay alınır.
 2. `canli-sina`: dolmayan emir, gönder, izle, iptal.
-3. Arayüzden BTCUSDT'yi Yarı Otomatik'e alıp **yaklaşık 6 USDT'lik** elle
-   canlı emir: giriş dolar, borsa hedefi ve stopu koyar.
+3. Arayüzden BTCUSDT'yi Yarı Otomatik'e alıp **yaklaşık 7 USDT'lik** elle
+   canlı emir: giriş dolar, borsa hedefi ve stopu koyar. Tutar, alışta
+   komisyon düşüldükten sonra satılacak miktarın da borsanın en küçük
+   tutarını (BTCUSDT'de 5 USDT) geçmesi için 5 değil 7 USDT seçildi.
 4. "Pozisyonu kapat" ile çıkış.
 
 Beklenen maliyet: iki komisyon (her biri yaklaşık %0.1) ve alış-satış farkı;
-6 USDT'de birkaç sent. Adım adım anlatım proje klasöründe
+7 USDT'de birkaç sent. Adım adım anlatım proje klasöründe
 `faz6/FAZ6-MAC-ADIMLARI.md`.
 
 ---
