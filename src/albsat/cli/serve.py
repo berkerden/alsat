@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import signal
 import socket
 import sys
 import threading
@@ -109,6 +110,14 @@ def _free_port(port: int, attempts: int = 20) -> int:
     return port
 
 
+class StopRequested(Exception):
+    """SIGTERM geldi: uygulama düzgün kapanmalı."""
+
+
+def _stop_requested(signum: int, frame: object) -> None:
+    raise StopRequested
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     logging.basicConfig(
@@ -132,12 +141,15 @@ def main(argv: list[str] | None = None) -> int:
         lock.acquire()
     except AlreadyRunning as error:
         print(f"\n! {error}", file=sys.stderr, flush=True)
-        print(
-            "  Açık olan kopyayı kullanmak için tarayıcıda şu adresi açın:\n"
-            f"    http://{HOST}:{args.port}/\n"
-            "  Kapatmak için o kopyanın çalıştığı Terminal penceresinde Control-C tuşlayın.",
-            file=sys.stderr, flush=True,
-        )
+        if keychain.secret_directory() is not None:
+            hint = ("  Sunucuda uygulama zaten çalışıyor. Durumu için: bash kurulum.sh durum\n"
+                    "  Durdurmak için: bash kurulum.sh durdur")
+        else:
+            hint = ("  Açık olan kopyayı kullanmak için tarayıcıda şu adresi açın:\n"
+                    f"    http://{HOST}:{args.port}/\n"
+                    "  Kapatmak için o kopyanın çalıştığı Terminal penceresinde Control-C "
+                    "tuşlayın.")
+        print(hint, file=sys.stderr, flush=True)
         return 1
 
     rule_path = rulestore.path_for(state.veri_dizini)
@@ -229,8 +241,12 @@ def main(argv: list[str] | None = None) -> int:
     # eski bir sekmeyi gösteriyordur.
     print(f"  Arayüz sürümü  : {asset_version()}", flush=True)
     print(f"  Adres          : {address}", flush=True)
-    print("\nDurdurmak için bu pencerede Control-C tuşlayın.", flush=True)
-    print("Mac uyursa veri akışı durur; uyanınca kaçırılan mumlar işlenir.\n", flush=True)
+    if keychain.secret_directory() is not None:
+        print("\nSunucuda çalışıyor. Durdurmak için: bash kurulum.sh durdur", flush=True)
+        print("Arayüze Mac'ten SSH tüneliyle bağlanılır (docs/FAZ7-SUNUCU.md).\n", flush=True)
+    else:
+        print("\nDurdurmak için bu pencerede Control-C tuşlayın.", flush=True)
+        print("Mac uyursa veri akışı durur; uyanınca kaçırılan mumlar işlenir.\n", flush=True)
 
     if not args.tarayici_acma:
         # Sunucu ayağa kalkmadan açılan sekme boş sayfa gösterir; bir saniye
@@ -239,8 +255,14 @@ def main(argv: list[str] | None = None) -> int:
 
     import uvicorn
 
-    runtime.start()
+    # Sunucuda "bash kurulum.sh durdur" SIGTERM gönderir. uvicorn sinyali
+    # yakalayıp düzgün kapanır, sonra aynı sinyali yeniden yükseltir; Python'un
+    # varsayılan SIGTERM davranışı süreci anında öldürdüğü için aşağıdaki
+    # kapanış (canlı yürütücü, gözcüye "kapatıldı" notu, kilit) hiç
+    # çalışmıyordu. Sinyal burada istisnaya çevrilir.
+    signal.signal(signal.SIGTERM, _stop_requested)
     try:
+        runtime.start()
         uvicorn.run(
             create_app(state),
             host=HOST,
@@ -248,7 +270,11 @@ def main(argv: list[str] | None = None) -> int:
             log_level="warning",
             access_log=False,
         )
+    except (StopRequested, KeyboardInterrupt):
+        pass
     finally:
+        # Kapanış yarıda kesilmesin; Docker 60 saniye sonra zaten zorla kapatır.
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
         print("\nKapatılıyor...", flush=True)
         runtime.stop()
         lock.release()

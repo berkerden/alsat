@@ -1,0 +1,22 @@
+# Görüntüye yalnızca kaynak, testler ve kilit dosyaları girer.
+# Veri, sırlar, sanal ortam ve git geçmişi girmez.
+.git
+.venv
+venv
+veri
+data
+arsiv
+.env
+.env.*
+*.pem
+*.key
+secrets
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.mypy_cache
+.ruff_cache
+*.egg-info
+*.log
+*.txt
+docs

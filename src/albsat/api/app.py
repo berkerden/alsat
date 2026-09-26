@@ -198,6 +198,16 @@ def _order_authority(runtime: Runtime | None) -> str:
     return "yok — Demo ve canlı anahtar kurulu değil; kâğıt emirler yalnızca yerel defterde"
 
 
+def _verdict_json(runtime: Runtime | None) -> dict[str, Any]:
+    if runtime is None:
+        return {"saglikli": True, "neden": "çalışan parça yok (yalnızca okuma)"}
+    try:
+        verdict = runtime.health_verdict()
+    except Exception as error:  # noqa: BLE001 - sağlık paneli bir denetim hatasıyla düşmesin
+        return {"saglikli": False, "neden": f"sağlık denetimi hata verdi: {type(error).__name__}"}
+    return {"saglikli": verdict.saglikli, "neden": verdict.neden}
+
+
 def _keys_in_use(runtime: Runtime | None) -> str:
     parts = []
     if runtime is not None and runtime.live is not None and runtime.live.trader is not None:
@@ -546,6 +556,10 @@ def create_app(state: AppState) -> FastAPI:
             "veri_dizini": str(state.veri_dizini.resolve()),
             "kural_deposu_var": state.kural_dosyasi.exists(),
             "filtre_onbellegi_var": ExchangeInfoStore(state.veri_dizini).exists(),
+            # Faz 7: gözcünün de kullandığı tek cümlelik karar (Docker sağlık denetimi).
+            "calisma": _verdict_json(runtime),
+            "gozcu": None if runtime is None else runtime.watchdog_status(),
+            "yedek": None if runtime is None else runtime.backup_status(),
             "zaman_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         }
 

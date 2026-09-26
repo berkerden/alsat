@@ -240,14 +240,21 @@ class LiveRunner:
         """Fiyatı ``max_age_seconds``'tan eski (ya da hiç gelmemiş) coinler.
 
         Döngü açılışı bitirmeden boş liste döner; uzlaştırma sürerken fiyat
-        gelmemesi beklenen durumdur."""
+        gelmemesi beklenen durumdur. Hiç fiyat gelmemiş coin de ancak
+        açılıştan bu yana ``max_age_seconds`` geçtiyse sayılır: akış yeni
+        bağlanırken yapılan yoklama yanlış alarm vermesin."""
         if self._loop_mono is None:
             return []
+        started = self._started_mono
+        waited = self.monotonic() - started if started is not None else max_age_seconds + 1
         now = self.clock()
         stale = []
         for sembol in self.symbols:
             seen = self.market.last_event(sembol)
-            if seen is None or (now - seen).total_seconds() > max_age_seconds:
+            if seen is None:
+                if waited > max_age_seconds:
+                    stale.append(sembol)
+            elif (now - seen).total_seconds() > max_age_seconds:
                 stale.append(sembol)
         return stale
 

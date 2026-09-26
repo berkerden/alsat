@@ -461,8 +461,12 @@ def main(argv: list[str] | None = None) -> int:
             # Faz 6 tuzak 5: açık uygulama sınama emrini "yetim" sayıp iptal eder ve
             # istek bütçesini göremez. Faz 7'den beri yalnızca söylenmiyor, engelleniyor.
             _say(f"Uygulama açık ({holder}). Sınama emri gönderilmedi.")
-            _say("Önce uygulamayı kapatın (arayüzün Terminal penceresinde Control-C), "
-                 "sonra bu komutu yeniden çalıştırın.")
+            if keychain.secret_directory() is not None:
+                _say("Önce uygulamayı durdurun (bash kurulum.sh durdur), sınamadan sonra "
+                     "yeniden başlatın (bash kurulum.sh baslat).")
+            else:
+                _say("Önce uygulamayı kapatın (arayüzün Terminal penceresinde Control-C), "
+                     "sonra bu komutu yeniden çalıştırın.")
             return 1
         return smoke(trader, public, stream_factory, root)
     key = setup()

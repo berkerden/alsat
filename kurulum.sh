@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Mac'te tek komutla kurulum ve fizibilite taraması.
 # Kullanım:  bash kurulum.sh
+#
+# Faz 7: sunucuda (/etc/albsat/sunucu dosyası varsa) aynı betik Docker ile
+# çalışır; seçenekleri aşağıda "sunucu_komutu" içinde. Mac'te davranış aynı.
 set -u
 
 KIRMIZI=$'\033[31m'; YESIL=$'\033[32m'; SARI=$'\033[33m'; KALIN=$'\033[1m'; SIFIR=$'\033[0m'
@@ -11,6 +14,125 @@ tamam()  { printf '%s✓ %s%s\n' "$YESIL" "$1" "$SIFIR"; }
 uyari()  { printf '%s! %s%s\n' "$SARI" "$1" "$SIFIR"; }
 
 cd "$(dirname "$0")" || exit 1
+
+# --- sunucu (Faz 7) ---------------------------------------------------------------
+# Sunucu, sunucu/ilk-kurulum.sh'nin yazdığı /etc/albsat/sunucu dosyasından
+# tanınır. Mac'te bu dosya yoktur; Mac'te aşağıdaki bölüm hiç çalışmaz.
+
+SUNUCU_SECENEKLERI="baslat, durum, durdur, gunluk, yedek, geri-yukle, telegram, gozcu,
+                     gozcu-sina, anahtar, komisyon, demo-anahtar, demo-sina,
+                     canli-anahtar, canli-sina"
+
+goruntu_derle() {
+  baslik "Görüntü derleniyor ve testler sunucuda çalıştırılıyor"
+  printf '   İlk seferde birkaç dakika sürer; ekrana ilerleme yazılır.\n\n'
+  if ! docker build --target sinama -t albsat:sinama .; then
+    hata "Derleme ya da testler başarısız. Uygulama başlatılmadı; çalışan sürüm değişmedi."
+    printf 'Yukarıdaki çıktının son 30 satırını Claude ile paylaşın.\n'
+    return 1
+  fi
+  if ! docker compose build albsat; then
+    hata "Uygulama görüntüsü derlenemedi."
+    return 1
+  fi
+  tamam "Görüntü hazır, testler geçti"
+}
+
+goruntu_var_mi() {
+  docker image inspect albsat:yerel >/dev/null 2>&1 || goruntu_derle
+}
+
+dizin_sahipligi() {
+  # Konteynerdeki kullanıcı (10001) veri dizinine yazabilmeli. Mac'ten kopyalanan
+  # dosyalar root'un olur; uygulama onlara yazamaz ve kayıt tutamazdı.
+  mkdir -p veri
+  chown -R 10001:10001 veri 2>/dev/null || uyari "veri dizininin sahibi ayarlanamadı (root değil misiniz?)"
+}
+
+sunucu_calistir() {
+  # $1: albsat.cli altındaki modül; gerisi o komutun seçenekleri.
+  local modul="$1"; shift
+  goruntu_var_mi || return 1
+  dizin_sahipligi
+  docker compose run --rm kurulum "albsat.cli.$modul" "$@"
+}
+
+yeniden_baslat_notu() {
+  printf '\nUygulama çalışıyorsa yeni ayarı görmesi için yeniden başlatın:\n'
+  printf '   %sbash kurulum.sh baslat%s\n' "$KALIN" "$SIFIR"
+}
+
+sunucu_komutu() {
+  if ! command -v docker >/dev/null 2>&1; then
+    hata "Docker kurulu değil. Önce sunucu/ilk-kurulum.sh çalıştırılmalı (docs/FAZ7-SUNUCU.md)."
+    return 1
+  fi
+  case "${1:-}" in
+    baslat)
+      goruntu_derle || return 1
+      baslik "Uygulama başlatılıyor"
+      dizin_sahipligi
+      docker compose up -d albsat || { hata "Başlatılamadı."; return 1; }
+      printf '   Açılış uzlaştırması sürüyor; en fazla iki dakika beklenir'
+      for _ in $(seq 1 24); do
+        if docker compose exec -T albsat python -m albsat.cli.yoklama --sessiz >/dev/null 2>&1
+        then break; fi
+        printf '.'
+        sleep 5
+      done
+      printf '\n\n'
+      docker compose exec -T albsat python -m albsat.cli.yoklama
+      printf '\nÇökerse ya da sunucu yeniden başlarsa uygulama kendiliğinden açılır.\n'
+      printf 'Durumu görmek için:  %sbash kurulum.sh durum%s\n' "$KALIN" "$SIFIR"
+      ;;
+    durum)
+      docker compose ps albsat
+      printf '\n'
+      if [ -z "$(docker compose ps -q --status running albsat 2>/dev/null)" ]; then
+        uyari "Uygulama çalışmıyor. Başlatmak için: bash kurulum.sh baslat"
+        return 1
+      fi
+      docker compose exec -T albsat python -m albsat.cli.yoklama
+      ;;
+    durdur)
+      docker compose stop albsat && tamam "Uygulama durduruldu; siz başlatana kadar kapalı kalır."
+      printf '   Borsadaki açık pozisyonların stop ve hedefi yerinde kalır.\n'
+      printf '   Gözcü kuruluysa birkaç dakika içinde "çalışmıyor" alarmı gelir; bu beklenen durum.\n'
+      ;;
+    gunluk)
+      docker compose logs --tail 200 albsat
+      ;;
+    yedek)          sunucu_calistir yedek && sunucu_calistir yedek --listele ;;
+    geri-yukle)
+      if [ -z "${2:-}" ]; then
+        hata "Hangi yedek? Örnek: bash kurulum.sh geri-yukle albsat-yedek-20260926-120000.tar.gz"
+        printf 'Yedekleri görmek için: bash kurulum.sh yedek\n'
+        return 1
+      fi
+      sunucu_calistir yedek --geri-yukle "$2"
+      ;;
+    telegram)       sunucu_calistir telegram && yeniden_baslat_notu ;;
+    gozcu)          sunucu_calistir gozcu && yeniden_baslat_notu ;;
+    gozcu-sina)     sunucu_calistir gozcu --sina ;;
+    anahtar)        sunucu_calistir anahtar ;;
+    komisyon)       sunucu_calistir anahtar --olc ;;
+    demo-anahtar)   sunucu_calistir demo && yeniden_baslat_notu ;;
+    demo-sina)      sunucu_calistir demo --sina ;;
+    canli-anahtar)  sunucu_calistir canli && yeniden_baslat_notu ;;
+    canli-sina)     sunucu_calistir canli --sina ;;
+    *)
+      hata "Sunucuda bu seçenek yok: ${1:-(boş)}"
+      printf 'Sunucuda kullanılabilecekler: %s\n' "$SUNUCU_SECENEKLERI"
+      printf 'Tarama ve fizibilite Mac'"'"'te çalışır; sunucu yalnızca uygulamayı 7/24 çalıştırır.\n'
+      return 1
+      ;;
+  esac
+}
+
+if [ "$(uname -s)" != "Darwin" ] && [ -f /etc/albsat/sunucu ]; then
+  sunucu_komutu "$@"
+  exit $?
+fi
 
 # "bash kurulum.sh tarama" veri indirme adımını atlar: Faz 2 örüntü taraması
 # internete çıkmaz, veriyi diskteki ./veri klasöründen okur.
@@ -27,20 +149,26 @@ cd "$(dirname "$0")" || exit 1
 # "bash kurulum.sh canli-anahtar" canlı işlem anahtarını kurar ve yalnızca okur
 # (izinler, hesap, komisyon); "canli-sina" canlı hesaba dolmayacak bir sınama
 # emri gönderip iptal eder (GERÇEK hesap; göndermeden önce coin adı sorulur).
+# Faz 7: "gozcu" uygulama kapanınca alarm veren gözcüyü kurar, "gozcu-sina"
+# alarmı sınar; "yedek" hemen yedek alır, "geri-yukle <dosya>" yedeği geri
+# yükler (uygulama kapalıyken).
 SADECE_TARAMA=0
 TESHIS=0
 ARAYUZ=0
 TEK_ADIM=""
+IKINCI="${2:-}"
 case "${1:-}" in
   "") ;;
   tarama) SADECE_TARAMA=1 ;;
   teshis) SADECE_TARAMA=1; TESHIS=1 ;;
   arayuz) ARAYUZ=1 ;;
   telegram|anahtar|komisyon|demo-anahtar|demo-sina|canli-anahtar|canli-sina) TEK_ADIM="$1" ;;
+  gozcu|gozcu-sina|yedek|geri-yukle) TEK_ADIM="$1" ;;
   *)
     hata "Bilinmeyen seçenek: $1"
     printf 'Kullanılabilecekler: tarama, teshis, arayuz, telegram, anahtar, komisyon,\n'
-    printf '                     demo-anahtar, demo-sina, canli-anahtar, canli-sina\n'
+    printf '                     demo-anahtar, demo-sina, canli-anahtar, canli-sina,\n'
+    printf '                     gozcu, gozcu-sina, yedek, geri-yukle\n'
     printf 'Seçeneksiz çalıştırmak için:  bash kurulum.sh\n'
     exit 1
     ;;
@@ -116,6 +244,38 @@ else
   printf 'Önce şunu deneyin:  git pull && bash kurulum.sh\n'
   rm -f "$TEST_LOG"
   exit 1
+fi
+
+if [ "$TEK_ADIM" = "gozcu" ]; then
+  baslik "4/$ADIM_SAYISI  Gözcü: uygulama kapanınca ya da takılınca alarm"
+  printf "   Ping adresi Mac'inizin Anahtar Zinciri'ne yazılır; ekrana yalnızca sunucu adı yazılır.\n\n"
+  python -m albsat.cli.gozcu
+  exit $?
+fi
+
+if [ "$TEK_ADIM" = "gozcu-sina" ]; then
+  baslik "4/$ADIM_SAYISI  Gözcü alarm sınaması"
+  printf '   Gözcüye önce "sorun var", 30 saniye sonra "düzeldi" gönderilir.\n'
+  printf '   Telefonunuza iki mesaj gelmeli.\n\n'
+  python -m albsat.cli.gozcu --sina
+  exit $?
+fi
+
+if [ "$TEK_ADIM" = "yedek" ]; then
+  baslik "4/$ADIM_SAYISI  Yedek"
+  python -m albsat.cli.yedek && python -m albsat.cli.yedek --listele
+  exit $?
+fi
+
+if [ "$TEK_ADIM" = "geri-yukle" ]; then
+  baslik "4/$ADIM_SAYISI  Yedeği geri yükleme"
+  if [ -z "$IKINCI" ]; then
+    hata "Hangi yedek? Örnek: bash kurulum.sh geri-yukle albsat-yedek-20260926-120000.tar.gz"
+    python -m albsat.cli.yedek --listele
+    exit 1
+  fi
+  python -m albsat.cli.yedek --geri-yukle "$IKINCI"
+  exit $?
 fi
 
 if [ "$TEK_ADIM" = "telegram" ]; then

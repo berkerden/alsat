@@ -101,15 +101,23 @@ def restore(root: Path, path: Path, port: int) -> int:
     return 0
 
 
+def _resolve(root: Path, path: Path) -> Path:
+    """Yalnızca dosya adı verildiyse yedek dizininde arar (listede görünen ad yeter)."""
+    if path.exists():
+        return path
+    candidate = backup.directory(root) / path.name
+    return candidate if candidate.exists() else path
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     root = Path(args.veri_dizini)
     if args.listele:
         return list_all(root)
     if args.sina is not None:
-        return check(args.sina)
+        return check(_resolve(root, args.sina))
     if args.geri_yukle is not None:
-        return restore(root, args.geri_yukle, args.port)
+        return restore(root, _resolve(root, args.geri_yukle), args.port)
     return take(root)
 
 

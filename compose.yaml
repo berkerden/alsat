@@ -1,0 +1,67 @@
+# Sunucuda (VPS) uygulamayı 7/24 çalıştırır (Faz 7). Mac'te kullanılmaz.
+#
+# Elle çalıştırmak gerekmez; sunucuda bütün adımlar kurulum.sh'den geçer:
+#   bash kurulum.sh baslat     derler, testleri çalıştırır, başlatır
+#   bash kurulum.sh durum      çalışıyor mu, son yedek, gözcü
+#   bash kurulum.sh durdur     durdurur (otomatik yeniden başlamaz)
+#
+# Ayrıntı: docs/FAZ7-SUNUCU.md
+
+name: albsat
+
+x-sertlestirme: &sertlestirme
+  image: albsat:yerel
+  # Arayüz yalnızca 127.0.0.1'i dinler (SPEC §5). Ana makinenin ağını
+  # kullanmak, internete hiçbir port açmadan arayüze SSH tüneliyle
+  # ulaşmayı sağlar. "ports:" bilerek yok.
+  network_mode: host
+  init: true
+  read_only: true
+  tmpfs:
+    - /tmp
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  environment:
+    ALBSAT_SIR_DIZINI: /sirlar
+
+services:
+  albsat:
+    <<: *sertlestirme
+    build:
+      context: .
+      target: calisma
+    # Çökerse ya da sunucu yeniden başlarsa kendiliğinden açılır; yalnızca
+    # "bash kurulum.sh durdur" ile durdurulunca açılmaz.
+    restart: unless-stopped
+    # Kapanışta canlı yürütücü, akışlar ve gözcü düzgün kapansın.
+    stop_grace_period: 60s
+    volumes:
+      - ./veri:/veri
+      # Uygulama sırları yalnızca okur.
+      - /etc/albsat/sirlar:/sirlar:ro
+    # Günlük döndürme: en fazla 5 × 10 MB.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # Anahtar, Telegram, gözcü kurulumu ve yedek gibi tek seferlik komutlar.
+  # "docker compose up" bunu başlatmaz; kurulum.sh "run --rm" ile çağırır.
+  kurulum:
+    <<: *sertlestirme
+    profiles:
+      - kurulum
+    entrypoint: ["python", "-m"]
+    volumes:
+      - ./veri:/veri
+      - /etc/albsat/sirlar:/sirlar
+    # Komutların varsayılan veri dizini "./veri"; buradan bakınca /veri.
+    working_dir: /
+    logging:
+      driver: json-file
+      options:
+        max-size: "1m"
+        max-file: "2"

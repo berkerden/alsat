@@ -271,8 +271,8 @@ class Runtime:
                 problems.append(f"canlı döngü {age:.0f} sn'dir ilerlemiyor")
             stale = runner.stale_symbols(DATA_STALE_SECONDS)
             if stale:
-                problems.append(f"piyasa verisi {DATA_STALE_SECONDS / 60:.0f} dakikadan eski: "
-                                + ", ".join(stale))
+                problems.append(f"piyasa verisi gelmiyor (son {DATA_STALE_SECONDS / 60:.0f} "
+                                f"dakikada fiyat yok): {', '.join(stale)}")
         try:
             free = shutil.disk_usage(self.root).free
         except OSError as error:

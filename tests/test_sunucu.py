@@ -8,10 +8,16 @@ from __future__ import annotations
 import io
 import json
 import os
+import signal
+import socket
 import sqlite3
 import stat
+import subprocess
+import sys
 import tarfile
+import time
 import urllib.error
+import urllib.request
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -508,6 +514,10 @@ def test_dongu_yasi_acilis_suresince_bos_sonra_olculur(tmp_path):
     runner.monotonic = lambda: mono[0]
     assert runner.loop_age() is None and runner.stale_symbols(300) == []
     runner._started_mono = 100.0
+    runner._loop_mono = 101.0
+    mono[0] = 102.0
+    assert runner.stale_symbols(300) == []  # akış yeni bağlanıyor, henüz fiyat yok
+    runner._loop_mono = None
     mono[0] = 100.0 + runner_module.STARTUP_GRACE_SECONDS - 1
     assert runner.loop_age() is None  # açılış uzlaştırması sürüyor
     mono[0] = 100.0 + runner_module.STARTUP_GRACE_SECONDS + 1
@@ -551,6 +561,39 @@ def test_arayuz_ikinci_kez_acilmaz(tmp_path, capsys, monkeypatch):
     assert "zaten çalışıyor" in capsys.readouterr().err
 
 
+
+def test_sunucuda_durdurma_sinyali_duzgun_kapatir(tmp_path):
+    # "bash kurulum.sh durdur" SIGTERM gönderir. uvicorn sinyali yeniden
+    # yükselttiği için süreç eskiden kapanış adımları çalışmadan ölüyordu:
+    # gözcüye not gitmiyor, canlı yürütücü durdurulmuyordu.
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    process = subprocess.Popen(
+        [sys.executable, "-m", "albsat.cli.serve", "--veri-dizini", str(tmp_path),
+         "--cevrimdisi", "--tarayici-acma", "--port", str(port), "--sabit-port"],
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+    )
+    try:
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline:
+            try:
+                urllib.request.urlopen(f"http://127.0.0.1:{port}/api/saglik", timeout=2)
+                break
+            except OSError:
+                time.sleep(0.3)
+        else:
+            pytest.fail("arayüz açılmadı")
+        assert held_by_other(tmp_path) is not None
+        process.send_signal(signal.SIGTERM)
+        out, _ = process.communicate(timeout=60)
+    finally:
+        if process.poll() is None:
+            process.kill()
+    assert process.returncode == 0, out
+    assert "Kapatılıyor..." in out and "Kapatıldı." in out
+    assert held_by_other(tmp_path) is None
+
 # --- gözcü komutu -------------------------------------------------------------------------
 
 
@@ -581,3 +624,39 @@ def test_gozcu_komutu_ulasamazsa_kaydetmez(sir_dizini, monkeypatch, capsys):
     monkeypatch.setattr("builtins.input", lambda prompt: "hc-ping.com/yanlis")
     assert gozcu_cli.main([]) == 1
     assert "benzemiyor" in capsys.readouterr().out
+
+
+def test_saglik_ucu_karari_verir_denetim_bozuksa_dusmez(tmp_path):
+    runtime = _runtime(tmp_path)
+    client = TestClient(create_app(AppState(veri_dizini=tmp_path, runtime=runtime)),
+                        base_url=BASE)
+    assert client.get("/api/saglik").json()["calisma"] == {"saglikli": True,
+                                                            "neden": "sağlıklı"}
+    runtime.runner = FakeRunner(age=999.0)  # type: ignore[assignment]
+    assert client.get("/api/saglik").json()["calisma"]["saglikli"] is False
+    runtime.runner = object()  # type: ignore[assignment]
+    veri = client.get("/api/saglik").json()["calisma"]
+    assert veri["saglikli"] is False and "AttributeError" in veri["neden"]
+    runtime.runner = None
+
+
+def test_yedek_adi_yalnizca_dosya_adiyla_verilebilir(tmp_path, capsys):
+    _database(tmp_path)
+    archive = backup.create(tmp_path, now=T0).yol
+    assert yedek_cli.main(["--veri-dizini", str(tmp_path), "--sina", archive.name]) == 0
+    assert yedek_cli.main(["--veri-dizini", str(tmp_path), "--sina", "yok.tar.gz"]) == 1
+
+
+def test_canli_sinamasi_uygulama_acikken_emir_gondermez(tmp_path, monkeypatch, capsys):
+    from albsat.cli import canli as canli_cli
+
+    monkeypatch.setattr(canli_cli.keychain, "available", lambda: True)
+    monkeypatch.setattr(canli_cli, "load_key", lambda service: object())
+    monkeypatch.setattr(canli_cli, "LiveTrader", lambda *a, **k: object())
+    monkeypatch.setattr(canli_cli, "smoke",
+                        lambda *a, **k: pytest.fail("uygulama açıkken sınama emri gitmemeli"))
+    with InstanceLock(tmp_path):
+        code = canli_cli.main(["--veri-dizini", str(tmp_path), "--sina"])
+    assert code == 1
+    out = capsys.readouterr().out
+    assert "Sınama emri gönderilmedi" in out and "Control-C" in out
