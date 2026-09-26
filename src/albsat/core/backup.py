@@ -165,7 +165,8 @@ def create(
     moment = now or utc_now()
     database = db.path_in(root)
     if not database.exists():
-        raise BackupError(f"Veritabanı bulunamadı: {database}")
+        raise BackupError(f"Veritabanı bulunamadı: {database}. Uygulama bu veri "
+                          "dizininde hiç açılmamış; yedeklenecek kayıt yok.")
     folder = directory(root)
     folder.mkdir(parents=True, exist_ok=True)
     name = f"{PREFIX}{as_utc(moment).strftime('%Y%m%d-%H%M%S')}{SUFFIX}"
