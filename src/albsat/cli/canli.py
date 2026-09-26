@@ -50,6 +50,7 @@ from albsat.cli.demo import (
 )
 from albsat.core import keychain
 from albsat.core.filters import SymbolRules
+from albsat.core.instance import held_by_other
 from albsat.core.tls import enable_system_trust
 from albsat.data.commission import CommissionStore
 from albsat.data.exchangeinfo import ExchangeInfoStore
@@ -87,7 +88,7 @@ def build_parser() -> argparse.ArgumentParser:
     group.add_argument("--sina", action="store_true",
                        help="Canlı hesaba dolmayacak bir sınama emri gönderip iptal eder")
     group.add_argument("--sil", action="store_true",
-                       help="Canlı işlem anahtarını bu Mac'in Anahtar Zinciri'nden siler")
+                       help="Canlı işlem anahtarını sır deposundan siler")
     return parser
 
 
@@ -97,8 +98,8 @@ def build_parser() -> argparse.ArgumentParser:
 def setup(ask: Ask = input, secret: Ask = getpass.getpass, say: Say = _say) -> StoredKey | None:
     if load_key(KEYCHAIN_SERVICE_LIVE) is not None:
         answer = ask(
-            "Bu Mac'te zaten kayıtlı bir canlı işlem anahtarı var. Yenisiyle değiştirmek için "
-            "e yazıp Enter'a basın (başka bir şey yazarsanız mevcut anahtar kullanılır): "
+            "Bu bilgisayarda zaten kayıtlı bir canlı işlem anahtarı var. Yenisiyle değiştirmek "
+            "için e yazıp Enter'a basın (başka bir şey yazarsanız mevcut anahtar kullanılır): "
         ).strip().lower()
         if answer not in ("e", "evet"):
             return load_key(KEYCHAIN_SERVICE_LIVE)
@@ -115,7 +116,8 @@ def setup(ask: Ask = input, secret: Ask = getpass.getpass, say: Say = _say) -> S
             say(f"! {error}")
             return None
         say("\nBu bilgisayarda canlı işlem için yeni bir Ed25519 anahtar çifti üretildi.")
-    say("Özel yarısı Mac'inizde kalacak. Binance'e aşağıdaki GENEL yarıyı vereceksiniz.\n")
+    say("Özel yarısı bu bilgisayarda kalacak. Binance'e aşağıdaki GENEL yarıyı "
+        "vereceksiniz.\n")
     say("----- Kopyalanacak metin (BEGIN ve END satırları dahil) -----")
     say(public_pem.strip())
     say("----- Kopyalanacak metnin sonu -----\n")
@@ -128,9 +130,15 @@ def setup(ask: Ask = input, secret: Ask = getpass.getpass, say: Say = _say) -> S
     say("     (Enable Spot & Margin Trading) AÇIK olsun. 'Para çekme' (Withdrawals), Margin,")
     say("     Vadeli (Futures), Opsiyon ve Transfer izinleri KAPALI kalsın. Uygulama bunları")
     say("     okuyup denetler; biri açıksa bu anahtarla emir göndermez.")
-    say("  6) IP kısıtlaması: Binance işlem izinli anahtarda güvenilir IP kısıtı öneriyor.")
-    say("     Ev IP'niz değişirse kısıtlı anahtar çalışmaz (borsadaki stop ve hedef yerinde")
-    say("     kalır). Seçiminizi README'deki 'Canlı işlem anahtarı' bölümüne göre yapın.")
+    if keychain.secret_directory() is not None:
+        say("  6) IP kısıtlaması ZORUNLU: 'Yalnızca güvenilir IP'lerden erişim' (Restrict")
+        say("     access to trusted IPs only) seçin ve sunucunun IP adresini yazın. IP'yi")
+        say("     sunucuyu kiraladığınız firmanın panelinde görürsünüz. Kısıtsız anahtarla")
+        say("     sunucu emir göndermez.")
+    else:
+        say("  6) IP kısıtlaması: Binance işlem izinli anahtarda güvenilir IP kısıtı öneriyor.")
+        say("     Ev IP'niz değişirse kısıtlı anahtar çalışmaz (borsadaki stop ve hedef yerinde")
+        say("     kalır). Seçiminizi README'deki 'Canlı işlem anahtarı' bölümüne göre yapın.")
     say("  7) Binance size bir 'API Key' gösterecek (uzun bir harf-rakam dizisi).\n")
     try:
         api_key_text = secret(
@@ -150,8 +158,8 @@ def setup(ask: Ask = input, secret: Ask = getpass.getpass, say: Say = _say) -> S
     except keychain.KeychainError as error:
         say(f"! {error}")
         return None
-    say("✓ Canlı işlem anahtarı Mac'in Anahtar Zinciri'ne kaydedildi (depoda ve dosyalarda "
-        "yok).")
+    say(f"✓ Canlı işlem anahtarı {keychain.where('e')} kaydedildi (depoda ve veri "
+        "dizininde yok).")
     return StoredKey(api_key, private)
 
 
@@ -417,7 +425,7 @@ def remove(say: Say = _say) -> int:
         keychain.delete(KEYCHAIN_SERVICE_LIVE, ACCOUNT_API_KEY),
         keychain.delete(KEYCHAIN_SERVICE_LIVE, ACCOUNT_PRIVATE),
     ]
-    say("✓ Canlı işlem anahtarı bu Mac'ten silindi." if any(removed)
+    say("✓ Canlı işlem anahtarı bu bilgisayardan silindi." if any(removed)
         else "Silinecek canlı işlem anahtarı bulunamadı.")
     say(f"  Binance'teki anahtarı da silmek için: {API_PAGE}")
     return 0
@@ -426,8 +434,7 @@ def remove(say: Say = _say) -> int:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if not keychain.available():
-        _say("Canlı işlem anahtarı macOS Anahtar Zinciri'nde saklanır; bu komut yalnızca "
-             "Mac'te çalışır.")
+        _say(keychain.unavailable_reason())
         return 1
     if args.sil:
         return remove()
@@ -449,7 +456,14 @@ def main(argv: list[str] | None = None) -> int:
         def stream_factory(**kwargs: Any) -> UserStream:
             return UserStream(endpoints.ws_api, key=stored, **kwargs)
 
-        _say("Arayüz açıksa önce kapatın (arayüzün Terminal penceresinde Control-C).")
+        holder = held_by_other(root)
+        if holder is not None:
+            # Faz 6 tuzak 5: açık uygulama sınama emrini "yetim" sayıp iptal eder ve
+            # istek bütçesini göremez. Faz 7'den beri yalnızca söylenmiyor, engelleniyor.
+            _say(f"Uygulama açık ({holder}). Sınama emri gönderilmedi.")
+            _say("Önce uygulamayı kapatın (arayüzün Terminal penceresinde Control-C), "
+                 "sonra bu komutu yeniden çalıştırın.")
+            return 1
         return smoke(trader, public, stream_factory, root)
     key = setup()
     if key is None:

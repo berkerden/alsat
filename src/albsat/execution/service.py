@@ -1,11 +1,12 @@
 """Demo ve canlı yürütücülerin kurulumu: anahtar, istemci, akışlar.
 
-Anahtarlar yalnızca burada, macOS Anahtar Zinciri'nden okunur (Demo:
-``albsat-binance-demo``, canlı işlem: ``albsat-binance-canli``). Arayüz
+Anahtarlar yalnızca burada, sır deposundan okunur (Mac'te Anahtar Zinciri,
+sunucuda ``core.keychain``'in korumalı dizini; Demo: ``albsat-binance-demo``,
+canlı işlem: ``albsat-binance-canli``). Arayüz
 katmanı anahtara ve imzalı istemciye hiç dokunmaz; yalnızca kurulmuş
 yürütücüyle konuşur.
 
-Anahtar yoksa (ya da bilgisayar Mac değilse) yürütücü yine kurulur ama
+Anahtar yoksa (ya da sır deposu yoksa) yürütücü yine kurulur ama
 ``trader`` boştur: sekme açılır, mod seçilemez ve nedeni yazılır.
 """
 
@@ -39,9 +40,9 @@ from albsat.strategy.rules import RuleSet
 
 NO_KEY = ("Demo Mode anahtarı kurulu değil. Kurmak için Terminal'de: "
           "bash kurulum.sh demo-anahtar")
-NOT_MAC = "Demo anahtarı yalnızca macOS Anahtar Zinciri'nden okunur."
+NOT_MAC = "Demo anahtarı okunamıyor: bu bilgisayarda sır deposu yok."
 OFFLINE = "Bu çalıştırmada ağ kapalı; Demo Mode kullanılamaz."
-LIVE_NOT_MAC = "Canlı işlem anahtarı yalnızca macOS Anahtar Zinciri'nden okunur."
+LIVE_NOT_MAC = "Canlı işlem anahtarı okunamıyor: bu bilgisayarda sır deposu yok."
 LIVE_OFFLINE = "Bu çalıştırmada ağ kapalı; canlı işlem kullanılamaz."
 
 
@@ -73,7 +74,10 @@ def build_executor(
         def key_loader() -> Any:
             return load_key(KEYCHAIN_SERVICE_DEMO)
 
-    key = key_loader()
+    try:
+        key = key_loader()
+    except keychain.KeychainError as error:
+        return offline(f"Demo anahtarı okunamadı: {error}")
     if key is None:
         return offline(NO_KEY)
     endpoints = endpoints_for(Environment.DEMO)
@@ -128,7 +132,10 @@ def build_live_executor(
         def key_loader() -> Any:
             return load_key(KEYCHAIN_SERVICE_LIVE)
 
-    key = key_loader()
+    try:
+        key = key_loader()
+    except keychain.KeychainError as error:
+        return offline(f"Canlı işlem anahtarı okunamadı: {error}")
     if key is None:
         return offline(LIVE.anahtar_yok)
     endpoints = endpoints_for(Environment.LIVE)

@@ -39,6 +39,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from albsat.api import demo_api, live_api, paper_api, serialize
+from albsat.core import keychain
 from albsat.core.filters import SymbolRules
 from albsat.data.exchangeinfo import ExchangeInfoStore
 from albsat.data.klines import closed_only, interval_ms, to_utc
@@ -200,10 +201,10 @@ def _order_authority(runtime: Runtime | None) -> str:
 def _keys_in_use(runtime: Runtime | None) -> str:
     parts = []
     if runtime is not None and runtime.live is not None and runtime.live.trader is not None:
-        parts.append("canlı işlem anahtarı (Anahtar Zinciri'nde; para çekme izni kapalı "
-                     "okunmadan emir gitmez)")
+        parts.append(f"canlı işlem anahtarı ({keychain.where('de')}; para çekme izni "
+                     "kapalı okunmadan emir gitmez)")
     if runtime is not None and runtime.demo is not None and runtime.demo.trader is not None:
-        parts.append("Demo Mode anahtarı (Anahtar Zinciri'nde; Demo'da para çekme yok)")
+        parts.append(f"Demo Mode anahtarı ({keychain.where('de')}; Demo'da para çekme yok)")
     return "; ".join(parts) or "kullanılmıyor"
 
 

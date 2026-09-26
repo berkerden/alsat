@@ -254,7 +254,9 @@ LIVE_FORBIDDEN: tuple[tuple[str, str], ...] = (
 )
 
 
-def live_key_problems(payload: Mapping[str, Any]) -> tuple[list[str], list[str]]:
+def live_key_problems(
+    payload: Mapping[str, Any], *, require_ip: bool = False
+) -> tuple[list[str], list[str]]:
     """Canlı **işlem** anahtarı için (engelleyici sorunlar, uyarılar).
 
     Faz 4'ün ``restriction_problems``'ı salt okuma anahtarı içindir (işlem iznini
@@ -262,6 +264,9 @@ def live_key_problems(payload: Mapping[str, Any]) -> tuple[list[str], list[str]]
     vadeli işlem, opsiyon ve transfer izinlerinden biri açıksa anahtar
     kullanılmaz. Karar ``apiRestrictions`` yanıtıyla verilir; hesabın
     ``canWithdraw`` bayrağına bakılmaz (o anahtarın izni değildir).
+
+    ``require_ip``: sunucuda (Faz 7, SPEC §5 "VPS'te statik IP ile zorunlu") IP
+    kısıtı olmayan anahtar kullanılmaz; Mac'te yalnızca uyarıdır.
     """
     blocking: list[str] = []
     warnings: list[str] = []
@@ -281,7 +286,13 @@ def live_key_problems(payload: Mapping[str, Any]) -> tuple[list[str], list[str]]
     if not payload.get("enableSpotAndMarginTrading"):
         blocking.append("Spot işlem izni kapalı; emir gönderilemez. Binance'te anahtarın "
                         "'Spot ve Margin işlemlerini etkinleştir' iznini açın.")
-    if not payload.get("ipRestrict"):
+    if not payload.get("ipRestrict") and require_ip:
+        blocking.append(
+            "IP kısıtlaması yok. Sunucuda işlem izinli anahtar yalnızca sunucunun sabit IP "
+            "adresiyle kısıtlanmışsa kullanılır. Binance'te anahtarı düzenleyip 'Yalnızca "
+            "güvenilir IP'lerden erişim' seçeneğine sunucunun IP adresini yazın."
+        )
+    elif not payload.get("ipRestrict"):
         warnings.append(
             "IP kısıtlaması yok: anahtar her IP adresinden kullanılabilir. Özel yarı bu "
             "Mac'in Anahtar Zinciri'nde durduğu için anahtarı kullanmak için bu Mac'e erişmek "

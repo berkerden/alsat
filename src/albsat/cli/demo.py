@@ -82,7 +82,7 @@ def build_parser() -> argparse.ArgumentParser:
     group.add_argument("--sina", action="store_true",
                        help="Demo'ya dolmayacak bir test emri gönderip iptal eder")
     group.add_argument("--sil", action="store_true",
-                       help="Demo anahtarını bu Mac'in Anahtar Zinciri'nden siler")
+                       help="Demo anahtarını sır deposundan siler")
     return parser
 
 
@@ -100,8 +100,8 @@ def _problem(error: BaseException) -> str:
 def setup(ask: Ask = input, secret: Ask = getpass.getpass, say: Say = _say) -> StoredKey | None:
     if load_key(KEYCHAIN_SERVICE_DEMO) is not None:
         answer = ask(
-            "Bu Mac'te zaten kayıtlı bir Demo anahtarı var. Yenisiyle değiştirmek için e yazıp "
-            "Enter'a basın (başka bir şey yazarsanız mevcut anahtar kullanılır): "
+            "Bu bilgisayarda zaten kayıtlı bir Demo anahtarı var. Yenisiyle değiştirmek için e "
+            "yazıp Enter'a basın (başka bir şey yazarsanız mevcut anahtar kullanılır): "
         ).strip().lower()
         if answer not in ("e", "evet"):
             return load_key(KEYCHAIN_SERVICE_DEMO)
@@ -120,7 +120,8 @@ def setup(ask: Ask = input, secret: Ask = getpass.getpass, say: Say = _say) -> S
             say(f"! {error}")
             return None
         say("\nBu bilgisayarda Demo Mode için yeni bir Ed25519 anahtar çifti üretildi.")
-    say("Özel yarısı Mac'inizde kalacak. Binance'e aşağıdaki GENEL yarıyı vereceksiniz.\n")
+    say("Özel yarısı bu bilgisayarda kalacak. Binance'e aşağıdaki GENEL yarıyı "
+        "vereceksiniz.\n")
     say("----- Kopyalanacak metin (BEGIN ve END satırları dahil) -----")
     say(public_pem.strip())
     say("----- Kopyalanacak metnin sonu -----\n")
@@ -150,7 +151,7 @@ def setup(ask: Ask = input, secret: Ask = getpass.getpass, say: Say = _say) -> S
     except keychain.KeychainError as error:
         say(f"! {error}")
         return None
-    say("✓ Demo anahtarı Mac'in Anahtar Zinciri'ne kaydedildi (depoda ve dosyalarda yok).")
+    say(f"✓ Demo anahtarı {keychain.where('e')} kaydedildi (depoda ve veri dizininde yok).")
     return StoredKey(api_key, private)
 
 
@@ -422,7 +423,7 @@ def remove(say: Say = _say) -> int:
         keychain.delete(KEYCHAIN_SERVICE_DEMO, ACCOUNT_API_KEY),
         keychain.delete(KEYCHAIN_SERVICE_DEMO, ACCOUNT_PRIVATE),
     ]
-    say("✓ Demo anahtarı bu Mac'ten silindi." if any(removed)
+    say("✓ Demo anahtarı bu bilgisayardan silindi." if any(removed)
         else "Silinecek Demo anahtarı bulunamadı.")
     say(f"  Binance'teki Demo anahtarını da silmek için: {API_PAGE}")
     return 0
@@ -431,7 +432,7 @@ def remove(say: Say = _say) -> int:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if not keychain.available():
-        _say("Demo anahtarı macOS Anahtar Zinciri'nde saklanır; bu komut yalnızca Mac'te çalışır.")
+        _say(keychain.unavailable_reason())
         return 1
     if args.sil:
         return remove()

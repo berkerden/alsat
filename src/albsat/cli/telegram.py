@@ -147,7 +147,7 @@ def setup(root: Path) -> int:
     except TelegramError as error:
         _say(f"! Deneme mesajı gönderilemedi: {error}")
         return 1
-    _say("✓ Jeton macOS Anahtar Zinciri'ne kaydedildi (depoda ve dosyalarda yok).")
+    _say(f"✓ Jeton {keychain.where('e')} kaydedildi (depoda ve veri dizininde yok).")
     _say(f"✓ Sohbet kimliği kaydedildi: {path}")
     _say("✓ Telegram'a deneme mesajı gönderildi.\n")
     _say("Arayüz açıksa kapatıp yeniden açın (Control-C, sonra bash kurulum.sh arayuz).")
@@ -183,8 +183,7 @@ def remove(root: Path) -> int:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if not keychain.available():
-        _say("Telegram jetonu macOS Anahtar Zinciri'nde saklanır; bu komut yalnızca "
-             "Mac'te çalışır.")
+        _say(keychain.unavailable_reason())
         return 1
     enable_system_trust()
     root = Path(args.veri_dizini)

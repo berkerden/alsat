@@ -804,6 +804,7 @@
     el: el, kutu: kutu, alanlar: alanlar, liste: liste, tablo: tablo,
     getir: getir, gonder: gonder, yaz: yaz, hataKutusu: hataKutusu,
     yuzde: yuzde, oran: oran, isaret: isaret, bildir: bildir, modRozeti: modRozeti,
+    saat: saat,
     sembol: function () { return sembolEl.value; },
     periyot: function () { return periyotEl.value; },
   };

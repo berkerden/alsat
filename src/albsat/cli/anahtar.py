@@ -58,7 +58,7 @@ def build_parser() -> argparse.ArgumentParser:
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--olc", action="store_true", help="Yalnızca komisyonu ölç")
     group.add_argument("--sil", action="store_true",
-                       help="Anahtarı bu Mac'in Anahtar Zinciri'nden sil")
+                       help="Anahtarı sır deposundan (Mac'te Anahtar Zinciri) sil")
     return parser
 
 
@@ -115,7 +115,7 @@ def setup() -> StoredKey | None:
     except keychain.KeychainError as error:
         _say(f"! {error}")
         return None
-    _say("✓ Anahtar Mac'in Anahtar Zinciri'ne kaydedildi (depoda ve dosyalarda yok).")
+    _say(f"✓ Anahtar {keychain.where('e')} kaydedildi (depoda ve veri dizininde yok).")
     return StoredKey(api_key, private)
 
 
@@ -188,7 +188,7 @@ def remove() -> int:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if not keychain.available():
-        _say("Anahtar macOS Anahtar Zinciri'nde saklanır; bu komut yalnızca Mac'te çalışır.")
+        _say(keychain.unavailable_reason())
         return 1
     if args.sil:
         return remove()

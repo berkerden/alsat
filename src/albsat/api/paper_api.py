@@ -467,6 +467,8 @@ def register(app: FastAPI, get_runtime: Callable[[], Runtime | None]) -> None:
                 symbol: engine.costs_for(symbol).kaynak_tr for symbol in runtime.symbols
             },
             "telegram": runtime.telegram_status(),
+            "gozcu": runtime.watchdog_status(),
+            "yedek": runtime.backup_status(),
             "butce_notu": (
                 "Bot bütçesini değiştirmek kâğıt hesabın başlangıç tutarını hemen "
                 "değiştirmez; yeni tutar hesap sıfırlanınca geçerli olur."

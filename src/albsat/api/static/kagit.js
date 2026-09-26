@@ -151,6 +151,32 @@
       tg.kurulu ? "Telegram: @" + (tg.bot || "bot") + " (" + tg.gonderilen + " gönderildi" +
         (tg.gonderilemeyen ? ", " + tg.gonderilemeyen + " gönderilemedi" : "") + ")"
         : "Telegram kurulu değil"));
+    // Faz 7: dış gözcü (uygulama kapanınca alarm) ve günlük yedek.
+    const g = v.gozcu || {};
+    let gozcuMetin = "Gözcü kurulu değil (kapanınca alarm yok)";
+    let gozcuSinif = "kart-etiket sari";
+    if (g.kurulu) {
+      if (g.son_hata) {
+        gozcuMetin = "Gözcüye ulaşılamıyor";
+      } else if (g.son_durum === "fail") {
+        gozcuMetin = "Gözcüye 'sorun var' bildirildi";
+      } else {
+        gozcuMetin = "Gözcü: " + g.sunucu + (g.son_ping_utc ? " · son " + A.saat(g.son_ping_utc) : "");
+        gozcuSinif = "kart-etiket";
+      }
+    }
+    const ge = el("span", gozcuSinif, gozcuMetin);
+    ge.title = [g.aciklama, g.son_neden && g.son_neden !== "sağlıklı" ? "Neden: " + g.son_neden : "",
+      g.son_hata || ""].filter(Boolean).join(" · ");
+    d.appendChild(ge);
+    const y = v.yedek;
+    if (y) {
+      const ye = el("span", y.son_hata ? "kart-etiket sari" : "kart-etiket",
+        y.son_hata ? "Yedek alınamadı"
+          : (y.son_yedek_utc ? "Son yedek " + A.saat(y.son_yedek_utc) : "Henüz yedek yok"));
+      ye.title = (y.son_hata ? y.son_hata + " · " : "") + "Günde bir, " + y.yedek_dizini;
+      d.appendChild(ye);
+    }
     return d;
   }
 
@@ -683,8 +709,9 @@
       sonDurum = d;
       sonPiyasa = p;
       A.modRozeti(d.modlar);
-      cizDegistiyse("kagit-baglanti", { canli: p.canli, baglanti: p.baglanti, telegram: d.telegram },
-        baglantiCiz);
+      cizDegistiyse("kagit-baglanti", {
+        canli: p.canli, baglanti: p.baglanti, telegram: d.telegram, gozcu: d.gozcu, yedek: d.yedek,
+      }, baglantiCiz);
       cizDegistiyse("kagit-modlar", {
         modlar: d.modlar, secilebilir: d.secilebilir_modlar, canli_modlar: d.canli_modlar,
         canli: d.canli, demo_hazir_degil: d.demo_hazir_degil,

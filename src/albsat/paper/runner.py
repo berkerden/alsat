@@ -92,6 +92,9 @@ FALLBACK_TICKER_SECONDS = 60.0
 HEARTBEAT_SECONDS = 30.0
 #: Uyku engelinin gerekip gerekmediği bu sıklıkla sınanır.
 SLEEP_GUARD_SECONDS = 5.0
+#: Açılış uzlaştırması (en fazla 30 günlük 1m mum) bu süreden uzun sürerse
+#: döngü "takıldı" sayılır (Faz 7 gözcüsü).
+STARTUP_GRACE_SECONDS = 900.0
 
 
 @dataclass
@@ -158,6 +161,9 @@ class LiveRunner:
         self._last_minute_poll = -1
         self._last_heartbeat = 0.0
         self._last_guard = -SLEEP_GUARD_SECONDS
+        #: Faz 7 gözcüsü için: döngü ne zaman başladı, son turu ne zamandı (tekdüze saat).
+        self._started_mono: float | None = None
+        self._loop_mono: float | None = None
         self.sleep_guard = sleep_guard or SleepGuard()
         #: Faz 5: Demo yürütücüsü (``execution.executor.DemoExecutor``); çalışma
         #: zamanı kurar. Coin Demo Mode'dayken sinyal ona gider.
@@ -190,6 +196,8 @@ class LiveRunner:
                            "kaldığı yerden işlenecek.", kind=KIND_CONNECTION)
 
     def _run(self) -> None:
+        self._started_mono = self.monotonic()
+        self._loop_mono = None
         try:
             self.bootstrap()
         except Exception as error:  # noqa: BLE001 - açılış hatası döngüyü öldürmesin
@@ -208,6 +216,40 @@ class LiveRunner:
             except Exception as error:  # noqa: BLE001 - tek hata döngüyü durdurmasın
                 logger.exception("Canlı döngü hatası")
                 self.health.son_hata = f"{type(error).__name__}: {error}"[:300]
+            self._loop_mono = self.monotonic()
+
+    # --- gözcü (Faz 7) ---------------------------------------------------------
+
+    def loop_age(self) -> float | None:
+        """Döngünün son turundan bu yana geçen saniye.
+
+        ``None``: döngü hiç başlamadı ya da açılış uzlaştırması hâlâ süresi
+        içinde. Açılış :data:`STARTUP_GRACE_SECONDS`'tan uzun sürerse açılıştan
+        bu yana geçen süre döner (takılmış sayılır)."""
+        started = self._started_mono
+        if started is None:
+            return None
+        now = self.monotonic()
+        last = self._loop_mono
+        if last is None:
+            elapsed = now - started
+            return elapsed if elapsed > STARTUP_GRACE_SECONDS else None
+        return now - last
+
+    def stale_symbols(self, max_age_seconds: float) -> list[str]:
+        """Fiyatı ``max_age_seconds``'tan eski (ya da hiç gelmemiş) coinler.
+
+        Döngü açılışı bitirmeden boş liste döner; uzlaştırma sürerken fiyat
+        gelmemesi beklenen durumdur."""
+        if self._loop_mono is None:
+            return []
+        now = self.clock()
+        stale = []
+        for sembol in self.symbols:
+            seen = self.market.last_event(sembol)
+            if seen is None or (now - seen).total_seconds() > max_age_seconds:
+                stale.append(sembol)
+        return stale
 
     # --- akış olayları ---------------------------------------------------
 

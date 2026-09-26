@@ -497,6 +497,8 @@ class LiveTrader(SignedTrader):
                          time_ms=time_ms, timeout=timeout)
         self.entry_cap_usdt = entry_cap_usdt
         self.monotonic = monotonic
+        #: IP kısıtı zorunlu mu? ``None``: sır deposuna göre (sunucuda zorunlu).
+        self.require_ip: bool | None = None
         self._permissions = PermissionState(tamam=False, zaman=None)
 
     # --- izinler -----------------------------------------------------------------
@@ -512,6 +514,7 @@ class LiveTrader(SignedTrader):
     def verify_permissions(self) -> PermissionState:
         """Anahtarın izinlerini okur. Okunamazsa önceki durum korunur, hata yazılır
         (izin tazeliği dolunca yeni giriş yine kapanır)."""
+        from albsat.core import keychain
         from albsat.exchange.signed import live_key_problems
 
         try:
@@ -526,7 +529,10 @@ class LiveTrader(SignedTrader):
                     hata=f"{type(error).__name__}: {error}"[:300],
                 )
             raise
-        blocking, warnings = live_key_problems(payload)
+        require_ip = self.require_ip
+        if require_ip is None:
+            require_ip = keychain.secret_directory() is not None
+        blocking, warnings = live_key_problems(payload, require_ip=require_ip)
         state = PermissionState(
             tamam=not blocking,
             zaman=self.monotonic(),

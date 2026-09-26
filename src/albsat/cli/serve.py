@@ -23,11 +23,18 @@ coinler için, emir başına tavanla ve anahtarın para çekme izni kapalı
 okunduktan sonra.
 
 Her açılışta bütün coinler "Sadece Öneri" modunda başlar (SPEC §2).
+
+Faz 7'den beri aynı veri dizininde ikinci bir kopya açılmaz
+(``core.instance``); günde bir yedek alınır (``core.backup``) ve gözcü
+kuruluysa uygulama kapanınca ya da takılınca alarm gelir (``notify.gozcu``).
+Sunucuda (Docker) ``--sabit-port`` ile çalışır: port doluysa bir sonrakine
+kaymaz, hata verir; gözcü ve sağlık denetimi hep aynı porta bakar.
 """
 
 from __future__ import annotations
 
 import argparse
+import logging
 import socket
 import sys
 import threading
@@ -36,6 +43,8 @@ from pathlib import Path
 
 from albsat.api.app import MODE_TR, AppState, asset_version, create_app
 from albsat.api.runtime import Runtime, attach_telegram
+from albsat.core import backup, keychain
+from albsat.core.instance import AlreadyRunning, InstanceLock
 from albsat.core.tls import enable_system_trust
 from albsat.strategy import rules as rulestore
 
@@ -73,6 +82,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Tarayıcıyı kendiliğinden açma",
     )
+    parser.add_argument(
+        "--sabit-port",
+        action="store_true",
+        help="Port doluysa bir sonrakine kayma, hata ver (sunucuda)",
+    )
     return parser
 
 
@@ -97,6 +111,10 @@ def _free_port(port: int, attempts: int = 20) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    logging.basicConfig(
+        level=logging.WARNING,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
 
     state = AppState(
         veri_dizini=Path(args.veri_dizini),
@@ -108,6 +126,19 @@ def main(argv: list[str] | None = None) -> int:
 
     print("Arayüz hazırlanıyor...", flush=True)
     print(f"  Veri dizini    : {state.veri_dizini.resolve()}", flush=True)
+
+    lock = InstanceLock(state.veri_dizini)
+    try:
+        lock.acquire()
+    except AlreadyRunning as error:
+        print(f"\n! {error}", file=sys.stderr, flush=True)
+        print(
+            "  Açık olan kopyayı kullanmak için tarayıcıda şu adresi açın:\n"
+            f"    http://{HOST}:{args.port}/\n"
+            "  Kapatmak için o kopyanın çalıştığı Terminal penceresinde Control-C tuşlayın.",
+            file=sys.stderr, flush=True,
+        )
+        return 1
 
     rule_path = rulestore.path_for(state.veri_dizini)
     if rule_path.exists():
@@ -154,7 +185,7 @@ def main(argv: list[str] | None = None) -> int:
     attach_telegram(runtime)
     state.runtime = runtime
 
-    port = _free_port(int(args.port))
+    port = int(args.port) if args.sabit_port else _free_port(int(args.port))
     address = f"http://{HOST}:{port}/"
     print(f"  Mod            : bütün coinler {MODE_TR} (canlı mod elle seçilmeden canlı "
           "hesaba emir gitmez)", flush=True)
@@ -187,6 +218,11 @@ def main(argv: list[str] | None = None) -> int:
         flush=True,
     )
     print(f"  Bildirimler    : {runtime.telegram_note}", flush=True)
+    print(f"  Gözcü          : {runtime.watchdog_note}", flush=True)
+    print(f"  Yedek          : günde bir, {backup.directory(state.veri_dizini).resolve()} "
+          f"(son {backup.KEEP} yedek tutulur)", flush=True)
+    if keychain.secret_directory() is not None:
+        print(f"  Sır deposu     : {keychain.secret_directory()} (sunucu)", flush=True)
     print(f"  Komisyon       : {runtime.engine.costs_for(state.semboller[0]).kaynak_tr}",
           flush=True)
     # Aynı kimlik sayfanın en altında da yazar; ikisi farklıysa tarayıcı
@@ -215,6 +251,7 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         print("\nKapatılıyor...", flush=True)
         runtime.stop()
+        lock.release()
         print("Kapatıldı. Kâğıt emirler bir sonraki açılışta kaldığı yerden işlenir.",
               flush=True)
         if runtime.demo is not None and runtime.demo.trader is not None:

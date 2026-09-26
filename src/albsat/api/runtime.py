@@ -1,5 +1,8 @@
 """Çalışan parçalar: kâğıt motoru, canlı döngü, bildirimler, Demo ve canlı yürütücüler.
 
+Faz 7'den beri iki parça daha: günlük yedek (``core.backup``) ve dış gözcü
+(``notify.gozcu``; uygulama kapanınca ya da takılınca alarm).
+
 Arayüz sunucusu açılırken bir kez kurulur ve kapanırken durdurulur. Testler
 aynı nesneyi ağa çıkmadan (``online=False``) kurar; o durumda canlı döngü
 yoktur, kâğıt motoru ve bildirimler vardır. Demo (Faz 5) ve canlı (Faz 6)
@@ -10,13 +13,16 @@ nedenini söyler.
 from __future__ import annotations
 
 import logging
+import shutil
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+from albsat.core import keychain
 from albsat.core.audit import SOURCE_SYSTEM, SOURCE_TELEGRAM
+from albsat.core.backup import BackupScheduler
 from albsat.core.clock import iso, utc_now
 from albsat.core.filters import SymbolRules
 from albsat.data.commission import paper_costs
@@ -30,7 +36,8 @@ from albsat.execution.executor import DemoExecutor
 from albsat.execution.live import LiveExecutor
 from albsat.execution.service import build_executor, build_live_executor
 from albsat.modes.state import MODE_PAPER, ModeStore
-from albsat.notify.base import KIND_LIMIT, MemoryNotifier
+from albsat.notify.base import KIND_LIMIT, KIND_SYSTEM, MemoryNotifier
+from albsat.notify.gozcu import HealthVerdict
 from albsat.paper.engine import PaperEngine
 from albsat.paper.fills import PaperCosts
 from albsat.paper.runner import LiveRunner
@@ -38,6 +45,13 @@ from albsat.strategy import rules as rulestore
 from albsat.strategy.rules import RuleSet
 
 logger = logging.getLogger(__name__)
+
+#: Gözcü: canlı döngü bu kadar saniye ilerlemezse "takıldı" sayılır.
+LOOP_STALL_SECONDS = 180.0
+#: Gözcü: bir coinin fiyatı bu kadar saniyeden eskiyse veri "bayat" sayılır.
+DATA_STALE_SECONDS = 300.0
+#: Gözcü: diskte bundan az boş yer kalırsa sorun sayılır (SQLite yazamaz olur).
+MIN_FREE_BYTES = 200 * 1024 * 1024
 
 
 @dataclass
@@ -56,6 +70,11 @@ class Runtime:
     telegram_note: str = ""
     previous_modes: dict[str, str | None] = field(default_factory=dict)
     started_utc: str = ""
+    #: Faz 7: günlük yedek (``core.backup.BackupScheduler``).
+    backups: BackupScheduler | None = None
+    #: Faz 7: dış gözcü (``notify.gozcu.Watchdog``); kurulu değilse ``None``.
+    watchdog: Any = None
+    watchdog_note: str = ""
 
     @classmethod
     def build(
@@ -71,6 +90,8 @@ class Runtime:
         demo_key_loader: Any = None,
         use_live: bool = True,
         live_key_loader: Any = None,
+        use_backup: bool = True,
+        use_watchdog: bool = True,
     ) -> Runtime:
         root = Path(root)
         symbols = tuple(symbols)
@@ -131,6 +152,14 @@ class Runtime:
         if runtime.runner is not None:
             runtime.runner.demo = runtime.demo
             runtime.runner.live = runtime.live
+        if use_backup:
+            runtime.backups = BackupScheduler(
+                root, on_failure=lambda text: notifier.send(text, kind=KIND_SYSTEM)
+            )
+        if online and use_watchdog:
+            runtime.watchdog, runtime.watchdog_note = _watchdog(runtime)
+        else:
+            runtime.watchdog_note = "Gözcü bu çalıştırmada kapalı (ağ yok)."
         return runtime
 
     # --- yaşam döngüsü ------------------------------------------------
@@ -146,8 +175,18 @@ class Runtime:
             self.demo.start()
         if self.live is not None:
             self.live.start()
+        if self.backups is not None:
+            self.backups.start()
+        if self.watchdog is not None:
+            self.watchdog.start()
 
     def stop(self) -> None:
+        if self.watchdog is not None:
+            # Gözcüye not: alarm yine gelir (uygulama gerçekten kapalı), ama
+            # ayrıntısında bunun bilerek kapatma olduğu görünür.
+            self.watchdog.stop(note="Uygulama kapatıldı (elle ya da yeniden başlatma).")
+        if self.backups is not None:
+            self.backups.stop()
         if self.live is not None:
             self.live.stop()
         if self.demo is not None:
@@ -222,6 +261,37 @@ class Runtime:
         return {"iptal_edilen": len(events.iptal), "kapatilan": len(events.kapanan),
                 "demo_kapatilan": demo_closing, "canli_kapatilan": live_closing}
 
+    def health_verdict(self) -> HealthVerdict:
+        """Gözcü için tek cümlelik sağlık kararı (``notify.gozcu``)."""
+        problems: list[str] = []
+        runner = self.runner
+        if runner is not None:
+            age = runner.loop_age()
+            if age is not None and age > LOOP_STALL_SECONDS:
+                problems.append(f"canlı döngü {age:.0f} sn'dir ilerlemiyor")
+            stale = runner.stale_symbols(DATA_STALE_SECONDS)
+            if stale:
+                problems.append(f"piyasa verisi {DATA_STALE_SECONDS / 60:.0f} dakikadan eski: "
+                                + ", ".join(stale))
+        try:
+            free = shutil.disk_usage(self.root).free
+        except OSError as error:
+            problems.append(f"disk okunamadı: {error.strerror}")
+        else:
+            if free < MIN_FREE_BYTES:
+                problems.append(f"diskte {free // (1024 * 1024)} MB boş yer kaldı")
+        return HealthVerdict(not problems, "; ".join(problems) or "sağlıklı")
+
+    def watchdog_status(self) -> dict[str, Any]:
+        if self.watchdog is None:
+            return {"kurulu": False, "aciklama": self.watchdog_note}
+        status: dict[str, Any] = dict(self.watchdog.status())
+        status["aciklama"] = self.watchdog_note
+        return status
+
+    def backup_status(self) -> dict[str, Any] | None:
+        return None if self.backups is None else self.backups.status()
+
     def telegram_status(self) -> dict[str, Any]:
         if self.telegram is None:
             return {"kurulu": False, "aciklama": self.telegram_note}
@@ -259,16 +329,40 @@ def _notifier(root: Path, *, enabled: bool) -> tuple[MemoryNotifier, str]:
             "gelmesi için: bash kurulum.sh telegram"
         )
     if not keychain.available():
-        return MemoryNotifier(), "Telegram jetonu yalnızca macOS Anahtar Zinciri'nden okunur."
-    token = load_token()
+        return MemoryNotifier(), "Telegram jetonu okunamıyor: bu bilgisayarda sır deposu yok."
+    try:
+        token = load_token()
+    except keychain.KeychainError as error:
+        return MemoryNotifier(), f"Telegram jetonu okunamadı: {error}"
     if token is None:
         return MemoryNotifier(), (
-            "telegram.json var ama jeton Anahtar Zinciri'nde bulunamadı. Yeniden kurun: "
+            f"telegram.json var ama jeton {keychain.where('de')} bulunamadı. Yeniden kurun: "
             "bash kurulum.sh telegram"
         )
     notifier = TelegramNotifier(TelegramClient(token), config.chat_id,
                                 bot_name=config.bot_kullanici_adi)
     return notifier, f"@{config.bot_kullanici_adi} üzerinden gönderiliyor."
+
+
+def _watchdog(runtime: Runtime) -> tuple[Any, str]:
+    from albsat.notify import gozcu
+
+    if not keychain.available():
+        return None, "Gözcü adresi okunamıyor: bu bilgisayarda sır deposu yok."
+    try:
+        url = gozcu.load_url_strict()
+    except keychain.KeychainError as error:
+        return None, f"Gözcü adresi okunamadı: {error}"
+    if url is None:
+        return None, ("Gözcü kurulu değil: uygulama kapanınca ya da takılınca haber veren alarm "
+                      "yok. Kurmak için: bash kurulum.sh gozcu")
+    try:
+        client = gozcu.PingClient(url)
+    except gozcu.WatchdogError as error:
+        return None, str(error)
+    watchdog = gozcu.Watchdog(client, check=runtime.health_verdict, notifier=runtime.notifier)
+    minutes = gozcu.INTERVAL_SECONDS / 60
+    return watchdog, f"{client.host} ({minutes:.0f} dakikada bir 'çalışıyorum')"
 
 
 def attach_telegram(runtime: Runtime) -> None:
