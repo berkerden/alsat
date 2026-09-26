@@ -6,9 +6,12 @@ dış gözcü (uygulama kapanınca alarm), sunucu sır deposu, Docker ile sunucu
 kurulumu, Mac'ten sunucuya geçiş rehberi
 **Şartname karşılığı:** SPEC.md §5, §6 (heartbeat), §7 ve §10'daki Faz 7 satırı
 **Kabul kriteri (SPEC.md §10):** *"7/24 çalışma ve alarm testi."*
-**Berk'in kapsam kararı:** bekleniyor. Kart 26 Eylül 2026'da soruldu; önerilen
-seçenek "Hazırla, kiralama" (bu belgedeki her şey yazılır ve burada sınanır,
-alarm Mac'te ücretsiz gözcüyle denenir, para harcanmaz).
+**Berk'in kapsam kararı (26 Eylül 2026):** "Hazırla, kiralama". Bu belgedeki
+her şey yazılır ve burada sınanır, alarm Mac'te ücretsiz gözcüyle denenir,
+sunucu kiralanmaz. Berk'in cümlesi: *"tamam yap ama şu an için sunucuda iş
+yapmak zorunda değilim istersen sunucu istersem mac üstünden devam
+edebilirim değil mi"*. Uygulama Mac'te eskisi gibi çalışır; sunucu hazır
+bekler.
 
 Bu belge Faz 7'nin ne yaptığını ve neden öyle kurulduğunu anlatır. Sunucuya
 taşınmanın adım adım sırası §12'de.
@@ -177,7 +180,8 @@ root olmayan ve salt okunur konteyner, anahtarın **sunucunun IP'siyle
 kısıtlı** olması (anahtar çalınsa da başka yerden kullanılamaz), para çekme
 izninin kapalı olması ve 10 USDT emir tavanı. Bu seçim Berk'e kartla soruldu
 ("Korumalı dosya" önerilen; "Parolalı dosya" ve "Dış sır kasası" diğer
-seçenekler); cevap bekleniyor.
+seçenekler). Kart cevaplanmadı; sunucu kiralanmadığı için karar sunucuya
+geçilirken yeniden sorulacak. Kodda önerilen seçenek var.
 
 ## 7. Sunucuda IP kısıtı zorunlu
 
@@ -384,7 +388,7 @@ uzlaştırılması.
 1. **`.env.mac` / `.env.vps` yok.** Ortama göre değişen tek şey sırların yeri;
    o da `compose.yaml`'daki `ALBSAT_SIR_DIZINI`. Mac'te ayar dosyası gerekmez.
    `.env.example` buna göre yeniden yazıldı.
-2. **Sunucuda sır dosyası şifreli değil** (§6; Berk'in cevabı bekleniyor).
+2. **Sunucuda sır dosyası şifreli değil** (§6; sunucuya geçerken Berk'e yeniden sorulacak).
 3. **Arayüze SSH tüneliyle erişilir,** Tailscale/WireGuard ya da HTTPS +
    TOTP değil (§10).
 4. **Sağlıksız konteyner kendiliğinden yeniden başlatılmaz;** gözcü alarm
