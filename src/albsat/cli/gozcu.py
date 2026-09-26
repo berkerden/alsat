@@ -14,6 +14,7 @@ sunucu adı yazılır.
 from __future__ import annotations
 
 import argparse
+import getpass
 import sys
 import time
 
@@ -49,9 +50,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 def setup() -> int:
     _say("Healthchecks.io'da oluşturduğunuz kontrolün ping adresini yapıştırın.")
-    _say("Adres https://hc-ping.com/ ile başlar. Yapıştırıp Enter'a basın.")
+    _say("Adres https://hc-ping.com/ ile başlar. Bu adres de bir şifre gibidir:")
+    _say("bilen, alarmı susturabilir. Kimseyle paylaşmayın, sohbete yapıştırmayın.\n")
     try:
-        text = input("Ping adresi: ").strip()
+        text = getpass.getpass(
+            "Adresi buraya yapıştırın ve Enter'a basın (güvenlik için ekranda görünmez): "
+        ).strip()
     except (EOFError, KeyboardInterrupt):
         _say("\nVazgeçildi; hiçbir şey kaydedilmedi.")
         return 1

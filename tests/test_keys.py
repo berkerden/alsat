@@ -12,7 +12,10 @@ from albsat.exchange.keys import (
     looks_like_ed25519,
 )
 
-PEM = "-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIA==\n-----END PRIVATE KEY-----"
+PEM = (
+    "-----BEGIN PRIVATE KEY-----"  # gizli-tarama: sahte
+    "\nMC4CAQAwBQYDK2VwBCIEIA==\n-----END PRIVATE KEY-----"
+)
 
 
 def test_gizli_metin_reprde_gorunmez():

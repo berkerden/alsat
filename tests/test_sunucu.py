@@ -44,7 +44,7 @@ from albsat.notify.gozcu import (
 )
 
 BASE = "http://127.0.0.1"
-URL = "https://hc-ping.com/1f2e3d4c-aaaa-bbbb-cccc-0123456789ab"
+URL = "https://hc-ping.com/1f2e3d4c-aaaa-bbbb-cccc-0123456789ab"  # gizli-tarama: sahte
 T0 = datetime(2026, 9, 26, 12, 0, tzinfo=UTC)
 
 
@@ -216,7 +216,24 @@ def test_yedek_komutu_uygulama_aciksa_geri_yuklemez(tmp_path, capsys):
     with InstanceLock(tmp_path):
         code = yedek_cli.main(["--veri-dizini", str(tmp_path), "--port", "1",
                                "--geri-yukle", str(archive)])
-    assert code == 1 and "çalışıyor" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert code == 1 and "çalışıyor" in out and "kurulum.sh" not in out
+
+
+def test_sunucuda_geri_yukleme_metinleri_kurulum_komutlarini_soyler(tmp_path, monkeypatch,
+                                                                     capsys):
+    monkeypatch.setenv(keychain.DIRECTORY_ENV, str(tmp_path / "sirlar"))
+    veri = tmp_path / "veri"
+    veri.mkdir()
+    _database(veri)
+    archive = backup.create(veri, now=T0).yol
+    with InstanceLock(veri):
+        assert yedek_cli.main(["--veri-dizini", str(veri), "--port", "1",
+                               "--geri-yukle", archive.name]) == 1
+    assert "bash kurulum.sh durdur" in capsys.readouterr().out
+    assert yedek_cli.main(["--veri-dizini", str(veri), "--port", "1",
+                           "--geri-yukle", archive.name]) == 0
+    assert "bash kurulum.sh baslat" in capsys.readouterr().out
 
 
 # --- sunucu sır deposu -----------------------------------------------------------------------
@@ -601,7 +618,7 @@ def test_gozcu_komutu_adresi_denedikten_sonra_kaydeder(sir_dizini, monkeypatch, 
     opener = FakeOpener()
     monkeypatch.setattr(gozcu_cli, "PingClient",
                         lambda url: PingClient(url, opener=opener))
-    monkeypatch.setattr("builtins.input", lambda prompt: URL)
+    monkeypatch.setattr(gozcu_cli.getpass, "getpass", lambda prompt: URL)
     assert gozcu_cli.main([]) == 0
     assert keychain.read("albsat-gozcu", "ping-adresi").reveal() == URL
     out = capsys.readouterr().out
@@ -618,10 +635,10 @@ def test_gozcu_komutu_ulasamazsa_kaydetmez(sir_dizini, monkeypatch, capsys):
     opener = FakeOpener()
     opener.error = urllib.error.HTTPError(URL, 404, "not found", {}, None)  # type: ignore[arg-type]
     monkeypatch.setattr(gozcu_cli, "PingClient", lambda url: PingClient(url, opener=opener))
-    monkeypatch.setattr("builtins.input", lambda prompt: URL)
+    monkeypatch.setattr(gozcu_cli.getpass, "getpass", lambda prompt: URL)
     assert gozcu_cli.main([]) == 1
     assert keychain.read("albsat-gozcu", "ping-adresi") is None
-    monkeypatch.setattr("builtins.input", lambda prompt: "hc-ping.com/yanlis")
+    monkeypatch.setattr(gozcu_cli.getpass, "getpass", lambda prompt: "hc-ping.com/yanlis")
     assert gozcu_cli.main([]) == 1
     assert "benzemiyor" in capsys.readouterr().out
 

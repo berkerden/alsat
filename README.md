@@ -17,6 +17,7 @@ Fizibilite sonucu: [`docs/FAZ1-FIZIBILITE.md`](docs/FAZ1-FIZIBILITE.md)
 Risk motoru, kâğıt işlem ve Telegram: [`docs/FAZ4-RISK-KAGIT-TELEGRAM.md`](docs/FAZ4-RISK-KAGIT-TELEGRAM.md)
 Demo Mode'da emir yürütme: [`docs/FAZ5-DEMO-EMIR-YURUTME.md`](docs/FAZ5-DEMO-EMIR-YURUTME.md)
 Canlı işlem ve canlıya geçiş kapısı: [`docs/FAZ6-CANLI.md`](docs/FAZ6-CANLI.md)
+Sunucu, gözcü, yedek ve alarm: [`docs/FAZ7-SUNUCU.md`](docs/FAZ7-SUNUCU.md)
 Fazlar arası devir notu: [`docs/DEVIR-NOTU.md`](docs/DEVIR-NOTU.md)
 
 ---
@@ -32,7 +33,7 @@ Fazlar arası devir notu: [`docs/DEVIR-NOTU.md`](docs/DEVIR-NOTU.md)
 | 4 | Risk motoru + kâğıt işlem + Telegram | ✅ Onaylandı |
 | 5 | Emir yürütme (**Demo Mode**) | ✅ Onaylandı |
 | 6 | Canlı yarı otomatik → tam otomatik | ✅ Onaylandı (Tam Otomatik kapıda kilitli) |
-| 7 | VPS dağıtımı | ⏳ |
+| 7 | VPS dağıtımı, izleme, yedek, alarm | ⏳ Yazıldı, kapsam kararı ve onay bekleniyor |
 
 Her fazın sonunda çalışma durur ve onay beklenir (SPEC.md §10).
 
@@ -88,6 +89,14 @@ Her fazın sonunda çalışma durur ve onay beklenir (SPEC.md §10).
 - **Canlı işlem (Faz 6):** Yarı Otomatik (her emir onayla, arayüzden ya da
   Telegram `/onayla`), emir tavanı, anahtar izni denetimi, canlıya geçiş
   kapısı; Tam Otomatik kapıyı geçen kural olmadan açılmaz
+- **Gözcü (Faz 7):** uygulama Healthchecks.io'ya iki dakikada bir "çalışıyorum"
+  der; kapanırsa, takılırsa ya da piyasa verisi kesilirse telefona alarm gelir
+- **Günlük yedek (Faz 7):** veritabanı ve ayarlar, sınanmış arşiv, son 14 yedek;
+  geri yükleme mevcut dosyaları silmeden kenara taşır
+- **Sunucu kurulumu (Faz 7):** Docker (yalnızca 127.0.0.1, root olmayan
+  kullanıcı, çökünce kendiliğinden kalkar), sunucu hazırlık betiği, sunucuda
+  sır dizini ve zorunlu IP kısıtı, tek kopya kilidi, özetli bağımlılık kilidi,
+  gizli bilgi taraması
 
 Faz 2'nin ölçüm sonucu: bu kapsamda (BTCUSDT + SOLUSDT, 15m + 1h, 2-4 mumluk
 pencereler) çoklu test düzeltmesinden geçen örüntü yok; maliyet tamamen
@@ -317,6 +326,39 @@ Yöntemin ayrıntısı: [`docs/FAZ6-CANLI.md`](docs/FAZ6-CANLI.md)
 
 ---
 
+## Gözcü, yedek ve sunucu (Faz 7)
+
+Uygulama kapanınca borsadaki stop ve hedef yerinde kalır, ama kısmi dolumu
+korumaya almak, uzlaştırma ve risk kapıları durur; bunu kimse fark etmeyebilir.
+**Gözcü** bunun için: Healthchecks.io'da ücretsiz bir kontrol açılır,
+ping adresi bir kez kaydedilir, sonra uygulama açıkken iki dakikada bir
+"çalışıyorum" der. Ses kesilirse ya da uygulama "sorun var" derse (döngü
+takıldı, piyasa verisi gelmiyor, disk doluyor) Healthchecks.io alarm gönderir.
+
+```bash
+bash kurulum.sh gozcu         # ping adresini kaydeder (gizli girişle)
+bash kurulum.sh gozcu-sina    # "sorun var", 30 sn sonra "düzeldi" gönderir
+```
+
+**Yedek** uygulama açıkken günde bir kendiliğinden alınır
+(`veri/yedek/`, son 14). Elle almak ve geri yüklemek:
+
+```bash
+bash kurulum.sh yedek
+bash kurulum.sh geri-yukle albsat-yedek-20260926-120000.tar.gz
+```
+
+Geri yükleme yalnızca uygulama kapalıyken yapılır; mevcut dosyalar silinmez,
+`veri/yedek/geri-yukleme-oncesi-…` altına taşınır.
+
+**Sunucu:** aynı `kurulum.sh` sunucuda Docker'la çalışır (`baslat`, `durum`,
+`durdur`, `gunluk` ve anahtar/gözcü/yedek komutları). Sunucunun hazırlığı,
+arayüze SSH tüneliyle erişim ve Mac'ten geçişin sırası
+[`docs/FAZ7-SUNUCU.md`](docs/FAZ7-SUNUCU.md)'de. Mac ile sunucu aynı canlı
+hesapta aynı anda çalışmaz.
+
+---
+
 ## API anahtarı
 
 Faz 4'te anahtar yalnızca bir iş için gerekir: hesabınıza özel **komisyon
@@ -385,7 +427,9 @@ duyuruya ekledi. **Güncel kural, anahtarı oluştururken Binance'in sayfasında
 yazandır; oradaki uyarıyı okuyun.** Binance işlem iznini kapatırsa uygulama
 bunu en geç 30 dakika içinde görür, canlı girişleri durdurur ve haber verir.
 
-VPS'e geçişte (Faz 7) IP kısıtlaması zorunludur.
+**Sunucuda (Faz 7) IP kısıtlaması zorunludur:** uygulama sunucuda IP kısıtsız
+canlı anahtarla emir göndermez. Sunucunun anahtarı sunucuda üretilir; Mac'in
+özel yarısı sunucuya kopyalanmaz.
 
 ---
 
@@ -395,6 +439,11 @@ VPS'e geçişte (Faz 7) IP kısıtlaması zorunludur.
 - Arayüz yalnızca `127.0.0.1` üzerinden dinler.
 - Margin, futures ve borçlanma uç noktaları hiçbir koşulda çağrılmaz.
 - Emir gönderimi için Binance MCP sunucusu kullanılmaz; doğrudan REST + WebSocket API.
+- Depoya sır girmesin diye gizli bilgi taraması: `.githooks/pre-commit`
+  (`git config core.hooksPath .githooks` ile etkinleşir) ve her test turunda
+  depoyu tarayan `tests/test_gizli_tarama.py`.
+- Sunucu görüntüsü yalnızca özetli kilit dosyasından (`requirements.lock`)
+  kurulur; `pip-audit` ile bilinen açık taranır.
 
 ---
 
@@ -403,7 +452,8 @@ VPS'e geçişte (Faz 7) IP kısıtlaması zorunludur.
 ```
 src/albsat/
   core/        Decimal aritmetiği, filtreler, komisyon, maliyet, denetim kaydı,
-               SQLite, saat, Anahtar Zinciri, uyku engeli
+               SQLite, saat, Anahtar Zinciri ve sunucu sır dizini, uyku engeli,
+               yedek, tek kopya kilidi, gizli bilgi taraması
   exchange/    uç noktalar, HTTP, istek bütçesi, WebSocket piyasa akışı,
                imzalı salt okuma istekleri, Demo ve canlı emir istemcileri,
                hesap akışı
@@ -418,7 +468,7 @@ src/albsat/
   execution/   Demo ve canlı emir yürütücüsü: planlayıcı, kimlikler, defter,
                uzlaştırma, hata sınıflandırma, ayarlar, canlıya geçiş kapısı
   modes/       coin başına çalışma modu
-  notify/      bildirimler, Telegram, komutlar
+  notify/      bildirimler, Telegram, komutlar, dış gözcü
   strategy/    kural deposu, öneri kartı, öneri motoru, sihirbaz, günlük,
                izleme, maliyet/risk paneli, disiplinli alım planı
   api/         yerel arayüzün uçları ve statik sayfası (HTML/CSS/JS)
@@ -426,4 +476,7 @@ src/albsat/
 tests/         birim testleri
 docs/          SPEC.md ve faz dokümanları
 config/        varsayılan yapılandırma
+sunucu/        sunucunun bir kerelik hazırlık betiği (Faz 7)
+Dockerfile, compose.yaml, requirements*.lock   sunucuda çalıştırma (Faz 7)
+.githooks/     gizli bilgi taraması kancası
 ```

@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 
 from albsat.cli.serve import DEFAULT_PORT
-from albsat.core import backup
+from albsat.core import backup, keychain
 from albsat.core.clock import istanbul_text
 from albsat.core.instance import held_by_other
 
@@ -94,10 +94,16 @@ def restore(root: Path, path: Path, port: int) -> int:
         )
     except backup.BackupError as error:
         _say(f"! {error}")
+        if keychain.secret_directory() is not None and "çalışıyor" in str(error):
+            _say("  Sunucuda durdurmak için: bash kurulum.sh durdur")
         return 1
     _say(f"✓ Geri yüklendi: {', '.join(result.dosyalar)}")
     _say(f"  Önceki dosyalar silinmedi, şuraya taşındı: {result.eskiler.resolve()}")
-    _say("  Uygulamayı yeniden açabilirsiniz; açılışta borsayla uzlaştırılır.")
+    if keychain.secret_directory() is not None:
+        _say("  Uygulamayı başlatmak için: bash kurulum.sh baslat")
+        _say("  Açılışta borsayla uzlaştırılır.")
+    else:
+        _say("  Uygulamayı yeniden açabilirsiniz; açılışta borsayla uzlaştırılır.")
     return 0
 
 
