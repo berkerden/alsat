@@ -43,6 +43,8 @@ frontend/dist/
 /faz2-teshis-sonuc.txt
 /tur2-oruntu-sonuc.txt
 /tur2-veri-sonuc.txt
+/trend-sonuc.txt
+/trend-sonuc.txt.tmp
 
 # Loglar
 *.log

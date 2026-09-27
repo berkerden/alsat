@@ -155,8 +155,13 @@ fi
 # "bash kurulum.sh tur2" önceden belirlenmiş ikinci kural arama turunu bir kez
 # çalıştırır: iki yıllık 15m/1h verisini indirir, taramayı Faz 2'nin adaylarını
 # da sayarak yapar (docs/TUR2-ONKAYIT.md).
+# "bash kurulum.sh trend" günlük trend testini bir kez çalıştırır: BTCUSDT ve
+# SOLUSDT'nin bütün günlük mumlarını indirir, beş klasik kuralı al-ve-tut'la
+# kıyaslar ve farkı blok bootstrap ile sınar (docs/TREND-ONKAYIT.md).
 SADECE_TARAMA=0
 TUR2=0
+TREND=0
+TREND_RAPOR="trend-sonuc.txt"
 TESHIS=0
 ARAYUZ=0
 TEK_ADIM=""
@@ -167,11 +172,12 @@ case "${1:-}" in
   teshis) SADECE_TARAMA=1; TESHIS=1 ;;
   arayuz) ARAYUZ=1 ;;
   tur2) TUR2=1 ;;
+  trend) TREND=1 ;;
   telegram|anahtar|komisyon|demo-anahtar|demo-sina|canli-anahtar|canli-sina) TEK_ADIM="$1" ;;
   gozcu|gozcu-sina|yedek|geri-yukle) TEK_ADIM="$1" ;;
   *)
     hata "Bilinmeyen seçenek: $1"
-    printf 'Kullanılabilecekler: tarama, teshis, tur2, arayuz, telegram, anahtar, komisyon,\n'
+    printf 'Kullanılabilecekler: tarama, teshis, tur2, trend, arayuz, telegram, anahtar, komisyon,\n'
     printf '                     demo-anahtar, demo-sina, canli-anahtar, canli-sina,\n'
     printf '                     gozcu, gozcu-sina, yedek, geri-yukle\n'
     printf 'Seçeneksiz çalıştırmak için:  bash kurulum.sh\n'
@@ -180,8 +186,17 @@ case "${1:-}" in
 esac
 
 ADIM_SAYISI=5
-if [ "$ARAYUZ" = "1" ] || [ -n "$TEK_ADIM" ]; then
+if [ "$ARAYUZ" = "1" ] || [ "$TREND" = "1" ] || [ -n "$TEK_ADIM" ]; then
   ADIM_SAYISI=4
+fi
+
+# Günlük trend testi bir kez çalışır; raporu varsa kuruluma hiç girmeden dur.
+if [ "$TREND" = "1" ] && [ -s "$TREND_RAPOR" ]; then
+  hata "Günlük trend testi daha önce tamamlanmış: $PWD/$TREND_RAPOR"
+  printf '\nBu sınama bir kez çalıştırılır. Yeniden çalıştırmak aynı soruyu bir kez\n'
+  printf 'daha sormak olur ve sonucu şansa açar. Raporu açmak için:\n'
+  printf '   open "%s"\n' "$TREND_RAPOR"
+  exit 1
 fi
 
 baslik "1/$ADIM_SAYISI  Python sürümü aranıyor (3.12 veya üstü gerekiyor)"
@@ -412,6 +427,31 @@ lock.release()' 2>/dev/null; then
     printf 'Yukarıdaki son 20 satırı Claude ile paylaşın.\n'
   fi
   exit "$TUR2_SONUC"
+fi
+
+if [ "$TREND" = "1" ]; then
+  # Önceden belirlenmiş sınama (docs/TREND-ONKAYIT.md). Kurallar, maliyet,
+  # alternatif dönem sayısı ve tohum kodda sabit; buradan değiştirilmez.
+  baslik "4/$ADIM_SAYISI  Günlük trend testi (BTCUSDT ve SOLUSDT, beş kural, bir kez)"
+  printf "   Önce iki coinin bütün günlük mumları Binance'in herkese açık ucundan iner:\n"
+  printf '   coin başına birkaç istek, anahtar gerekmez, hesabınıza hiçbir istek gitmez.\n'
+  printf '   Sonra her kural al-ve-tut ile kıyaslanır ve fark, geçmişin parçalarından\n'
+  printf '   kurulan 10.000 alternatif dönemde sınanır. Birkaç dakika sürebilir; ekrana\n'
+  printf '   ilerleme yazar. Uygulama açıksa kapatmanız gerekmez.\n\n'
+
+  python -m albsat.cli.trend --rapor "$TREND_RAPOR"
+  TREND_SONUC=$?
+
+  baslik "Bitti"
+  if [ "$TREND_SONUC" = "0" ]; then
+    printf 'Rapor:  %s%s%s\n' "$KALIN" "$PWD/$TREND_RAPOR" "$SIFIR"
+    printf '\nBu dosyayı Claude ile paylaşın. Açmak için:\n'
+    printf '   open "%s"\n' "$TREND_RAPOR"
+  else
+    hata "Sınama tamamlanmadı; sayılmadı."
+    printf 'Yukarıdaki son 20 satırı Claude ile paylaşın.\n'
+  fi
+  exit "$TREND_SONUC"
 fi
 
 if [ "$ARAYUZ" = "1" ]; then

@@ -20,6 +20,7 @@ Canlı işlem ve canlıya geçiş kapısı: [`docs/FAZ6-CANLI.md`](docs/FAZ6-CAN
 Sunucu, gözcü, yedek ve alarm: [`docs/FAZ7-SUNUCU.md`](docs/FAZ7-SUNUCU.md)
 İkinci kural arama turunun ön kaydı: [`docs/TUR2-ONKAYIT.md`](docs/TUR2-ONKAYIT.md)
 İkinci kural arama turunun sonucu: [`docs/TUR2-SONUC.md`](docs/TUR2-SONUC.md)
+Günlük trend testinin ön kaydı: [`docs/TREND-ONKAYIT.md`](docs/TREND-ONKAYIT.md)
 Fazlar arası devir notu: [`docs/DEVIR-NOTU.md`](docs/DEVIR-NOTU.md)
 
 ---
@@ -110,6 +111,13 @@ edilen örüntü yok**; en yakın aday eşiğin 320 katı uzağında. Ön kayda 
 kapsamdaki arama kapandı. Ön kayıt
 [`docs/TUR2-ONKAYIT.md`](docs/TUR2-ONKAYIT.md), sonuç
 [`docs/TUR2-SONUC.md`](docs/TUR2-SONUC.md).
+
+**Günlük trend testi** (hazır, henüz çalıştırılmadı): BTCUSDT ve SOLUSDT'nin
+günlük grafiğinde beş klasik trend takibi kuralı (200 günlük ortalama, 50/200
+kesişimi, 55/20 ve 20/10 gün kırılımı, 12 aylık momentum) al-ve-tut ile bir
+kez kıyaslanır. Beklenti al-ve-tut'u geçmek değil, büyük düşüşlerin bir
+kısmından kaçmak. Ön kayıt [`docs/TREND-ONKAYIT.md`](docs/TREND-ONKAYIT.md);
+çalıştırmak için `bash kurulum.sh trend`.
 
 ---
 
