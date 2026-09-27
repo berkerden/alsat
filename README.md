@@ -115,8 +115,9 @@ kapsamdaki arama kapandı. Ön kayıt
 **Günlük trend testi** (hazır, henüz çalıştırılmadı): BTCUSDT ve SOLUSDT'nin
 günlük grafiğinde beş klasik trend takibi kuralı (200 günlük ortalama, 50/200
 kesişimi, 55/20 ve 20/10 gün kırılımı, 12 aylık momentum) al-ve-tut ile bir
-kez kıyaslanır. Beklenti al-ve-tut'u geçmek değil, büyük düşüşlerin bir
-kısmından kaçmak. Ön kayıt [`docs/TREND-ONKAYIT.md`](docs/TREND-ONKAYIT.md);
+kez kıyaslanır. Aynı kurallar 2018'in on büyük coininde de kontrol olarak
+ölçülür. Beklenti al-ve-tut'u geçmek değil, büyük düşüşlerin bir kısmından
+kaçmak. Ön kayıt [`docs/TREND-ONKAYIT.md`](docs/TREND-ONKAYIT.md);
 çalıştırmak için `bash kurulum.sh trend`.
 
 ---

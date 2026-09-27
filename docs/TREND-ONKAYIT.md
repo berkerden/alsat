@@ -14,6 +14,15 @@ Sınama burada yazılanla birebir çalıştırılır. Sonuç görüldükten sonr
 ayar değiştirilmez; ayar değiştirip yeniden çalıştırmak yeni bir sınama olur
 ve öyle sayılır.
 
+**Ek (28 Eylül 2026, sınama çalışmadan önce):** ilk sürüm `4324bf0`
+commit'iyle gönderildi. Ardından Berk başka bir konuda *"farklı coinleri
+kullanmak işe yarar mı, … ilk 20 coin gibi denemek"* diye sordu. Oradaki
+cevapta, aynı kuralların hiç değiştirilmeden birkaç büyük coinde daha kontrol
+olarak çalıştırılacağı ve listenin sonuçlara bakılmadan, dönemin başındaki
+duruma göre sabitleneceği söylendi. Bu yüzden **kontrol coinleri (§5a)**
+eklendi. Ekleme, hiçbir gerçek sonuç görülmeden, Berk komutu çalıştırmadan
+önce yapıldı. Başka hiçbir ayar değişmedi.
+
 Kod: `src/albsat/research/trend.py` (kurallar, ölçüm, sınama),
 `src/albsat/research/trend_report.py` (rapor), `src/albsat/cli/trend.py`
 (indirme ve çalıştırma), testler `tests/test_trend.py`.
@@ -93,13 +102,15 @@ yoktur. Momentum 12 ayı takvim yılı olarak alır (kripto her gün işlem gör
 
 ## 4. Veri ve ölçüm
 
-* **Semboller:** BTCUSDT ve SOLUSDT; periyot 1d (günlük).
+* **Semboller:** BTCUSDT ve SOLUSDT; periyot 1d (günlük). Ayrıca §5a'daki
+  on kontrol coini.
 * **Veri:** Binance'in herkese açık `GET /api/v3/klines` ucundan, her coinin
   Binance'teki ilk günlük mumundan (BTCUSDT Ağustos 2017, SOLUSDT Ağustos
   2020) çalıştırılan gün kapanmış son günlük muma kadar. Coin başına 3-4
-  istek; 8'i aşacak bir hesap çıkarsa hiçbir istek gönderilmeden durulur.
-  Veri eksiksiz değilse (%99,5 altı, tekrar ya da bozuk mum) ya da son mum
-  üç günden eskiyse sınama başlamaz.
+  istek, on iki coinde toplam 50'nin altında; bir coin için 8'i aşacak bir
+  hesap çıkarsa hiçbir istek gönderilmeden durulur. BTC ya da SOL'un verisi
+  eksiksiz değilse (%99,5 altı, tekrar ya da bozuk mum) ya da son mum üç
+  günden eskiyse sınama başlamaz.
 * **Dönem:** her coinde ilk mumdan 365 gün sonra başlar (en uzun kural olan
   12 aylık momentumun ısınması), son kapanmış mumda biter. Beş kural ve
   al-ve-tut aynı dönemde ölçülür. Bitiş günü seçilmez; çalıştırılan gündür.
@@ -139,6 +150,52 @@ kuralın gerçek bir üstünlüğü yoksa on alt sınamadan en az birinin "Geçt
 
 Kural ve coin çifti birlikte değerlendirilir: BTC'de geçen bir kural SOL
 için geçmiş sayılmaz.
+
+Buradaki "Geçti" ön karardır. Son karar için §5a'daki kontrol de tutmalıdır;
+tutmazsa sonuç "Belirsiz" olur.
+
+## 5a. Kontrol coinleri
+
+Aynı beş kural, **hiç değiştirilmeden**, on büyük coinde daha ölçülür. Amaç
+kuralın tuttuğu coini aramak değil, kuralı sınamak: bir kural yalnızca BTC'de
+tutup başka büyük coinlerde tutmuyorsa, BTC'deki sonucu büyük olasılıkla
+şanstır.
+
+* **Liste:** CoinMarketCap'in **12 Ağustos 2018** listesinde (BTC'nin
+  değerlendirme döneminin başladığı hafta) piyasa değerine göre ilk on coin,
+  BTC ve USDT (stabil coin) hariç, o listedeki sırasıyla: **ETH, XRP, BCH,
+  EOS, XLM, LTC, ADA, XMR, IOTA, TRX**. Binance'teki USDT çiftleri
+  kullanılır (`ETHUSDT` … `TRXUSDT`). Liste o günün sırasından alındı;
+  sonrasındaki fiyatlara ve kuralların sonuçlarına bakılmadı.
+* **Neden bugünün listesi değil:** bugünün ilk 20'si geçmişin kazananlarıdır.
+  Geçmişe bugünün listesiyle bakınca batıp listeden düşen coinler hesaba
+  girmez ve her şey olduğundan iyi görünür.
+* **Listeden düşen coinler:** Binance'te artık işlem görmeyen bir çiftin
+  verisi alınabiliyorsa, coin kendi son gününe kadar ölçülür. Binance hiç veri
+  vermiyorsa (çift kapanmış ya da adı değişmiş) ya da veri bozuksa raporda
+  "ölçülemedi" diye yazılır. Listeden düşen coinler çoğu zaman değer
+  kaybetmiş coinlerdir ve trend kuralları uzun düşüşte al-ve-tut'tan iyi
+  davranma eğilimindedir. Bu yüzden onları dışarıda bırakmak kontrolü
+  kurallar aleyhine sertleştirir, gevşetmez.
+* **Ölçüm:** BTC ve SOL'la aynı. Her coin Binance'teki bugünkü USDT çiftinin
+  ilk günlük mumundan 365 gün sonra başlar (bazı çiftler 2018'den sonra açıldı
+  ya da adı değişti). Maliyet aynı. Bootstrap ve p-değeri yok; on alt
+  sınamalık aile büyümez.
+* **İyi:** kural o coinde al-ve-tut'tan hem Sharpe'ta yüksek hem en büyük
+  düşüşte küçük (§5'teki iki koşul).
+* **Kontrol tutar:** en az **5** kontrol coini ölçülebildiyse ve kural ölçülen
+  coinlerin **en az yarısında** iyiyse.
+* **Son karar:** BTC ya da SOL'da ön kararı "Geçti" olan bir kural, kontrolü
+  tutmuyorsa "Belirsiz"e düşer. Kontrol hiçbir kararı yukarı çekmez:
+  "Belirsiz" ya da "Geçmedi" bir kural kontrolde ne kadar iyi olursa olsun
+  öyle kalır.
+* **Eşik nasıl seçildi:** yapay veriyle ölçülmedi; "kural çoğu büyük coinde
+  de tutmalı" ilkesinin en gevşek hali olarak önceden konuldu. Kontrol
+  yalnızca "Geçti"yi düşürebildiği için §6'daki yanlış alarm oranlarını
+  artıramaz; bir kuralı yakalama olasılığını biraz düşürebilir.
+* **Sınırı:** kripto coinleri büyük ölçüde BTC ile birlikte hareket eder. On
+  kontrol coini on bağımsız kanıt sayılmaz; bir sağlamadır. Kontrol coinindeki
+  hiçbir sonuç o coin için bir kural önerisi değildir.
 
 ## 6. Sağlamlık sınaması ve nasıl seçildiği
 
@@ -194,8 +251,9 @@ değiştirmiyor.
 * Sınama rapor yazılmadan kesilirse (sonuç görülmeden) yeniden başlatmak
   aynı sınamadır.
 * Kurallar, parametreler, maliyet, dönem, 10.000 alternatif, 20 günlük
-  parça, tohum ve karar ölçütü kodda sabittir; değiştirmek yeni bir
-  sınamadır ve bu belgeye göre önerilmez.
+  parça, tohum, kontrol coinleri listesi ve karar ölçütü kodda sabittir;
+  değiştirmek yeni bir sınamadır ve bu belgeye göre önerilmez. Kontrol
+  coinleri bu tek çalıştırmanın parçasıdır, ayrı bir tur değildir.
 
 ## 8. Sonuca göre ne olacak
 
@@ -238,6 +296,9 @@ elle işlem aracı olarak kalır.
 * Gerçek günlük veriye bakılmadı. Bu ortamdan Binance'e erişim yok, başka
   bir kaynaktan da günlük veri indirilmedi. Araç yalnızca yapay veriyle
   sınandı.
+* Kontrol listesi için yalnızca CoinMarketCap'in 12 Ağustos 2018 anlık
+  listesindeki sıraya bakıldı (ilk 20: BTC, ETH, XRP, BCH, EOS, XLM, LTC,
+  ADA, USDT, XMR, IOTA, TRX, …). O tarihten sonraki hiçbir fiyata bakılmadı.
 * Yapay veri ölçümleri: yön bilgisi yokken yanlış alarm oranı §6'daki
   tabloda. Bilerek eğilim konmuş veride sınamanın kuralı yakalama oranı (en
   az bir "Geçti"; bootstrap 1.000, her satır 100 deneme, her denemede iki
@@ -255,4 +316,7 @@ elle işlem aracı olarak kalır.
   bozulunca önceki kararlar değişmiyor), kaynaktaki tanımlarla birebir
   çalıştığı, maliyetin her alış ve satışta ödendiği, sınamanın üstünlük
   yokken yanlış alarm vermediği ve bilerek eğilim konmuş veride kuralı
-  bulduğu, indirmenin birkaç istekle bittiği ve raporun bir kez yazıldığı.
+  bulduğu, indirmenin birkaç istekle bittiği ve raporun bir kez yazıldığı;
+  kontrolün yalnızca "Geçti"yi düşürdüğü, Binance'te olmayan bir çiftin
+  sınamayı durdurmadan "ölçülemedi" yazıldığı ve işlemi durmuş bir çiftin
+  kendi son gününe kadar ölçüldüğü.

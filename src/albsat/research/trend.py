@@ -23,6 +23,9 @@ Faz 2 ve ikinci turdan üç fark:
   getirilerin sırasını karıştırmak, düşüşten sonra oynaklığın arttığı
   eğilimsiz veride iki coinden en az birinde "Geçti" çıkma oranını izin
   verilen %10'un üstüne, %28'e çıkarıyordu.
+* **Kontrol coinleri.** Aynı kurallar 2018'in on büyük coininde de ölçülür
+  (:data:`CONTROL_SYMBOLS`). Kontrol yalnızca "Geçti"yi doğrular ya da
+  "Belirsiz"e düşürür; kendi p-değeri yoktur (:func:`final_verdict`).
 
 **Nedensellik:** ``t`` günü kapanışında verilen karar yalnızca ``0..t``
 kapanışlarına bakar ve ``t+1`` gününün getirisini alır. Kurallar yalnızca
@@ -325,8 +328,8 @@ def difference_tests(
             on_progress(done, resamples)
 
     tests: list[DifferenceTest] = []
-    for position, item in enumerate(collected):
-        values = np.concatenate(item)
+    for position, chunks in enumerate(collected):
+        values = np.concatenate(chunks)
         estimate = float(observed[position])
         low, high = np.percentile(values, [5, 95])
         reached = int(np.count_nonzero(values - estimate >= estimate))
@@ -516,3 +519,130 @@ def apply_correction(
             position += 1
         corrected.append(replace(result, rules=tuple(rules)))
     return corrected
+
+
+# --- kontrol coinleri (ön kayıt §5a) ------------------------------------------------
+#
+# Aynı beş kural, hiç değiştirilmeden, başka büyük coinlerde de ölçülür. Amaç
+# kuralın tuttuğu coini aramak değil kuralı sınamak: BTC ya da SOL'da "Geçti"
+# alan bir kural kontrol coinlerinin en az yarısında da al-ve-tut'tan iyi
+# değilse "Belirsiz"e düşer. Kontrol hiçbir kararı yukarı çekmez, kendi
+# p-değeri yoktur ve aileyi büyütmez. Coinler BTC ile birlikte hareket ettiği
+# için bağımsız kanıt sayılmaz; bir sağlamadır.
+
+#: CoinMarketCap'in 12 Ağustos 2018 listesinde (BTC'nin değerlendirme döneminin
+#: başladığı hafta) piyasa değerine göre ilk on coin; BTC ve USDT hariç, sıra
+#: o listedeki gibi. Sonuçlara bakılmadan sabitlendi. Bugünün listesi
+#: kullanılmadı: bugün büyük olanlar geçmişin kazananlarıdır.
+CONTROL_SYMBOLS = (
+    "ETHUSDT",
+    "XRPUSDT",
+    "BCHUSDT",
+    "EOSUSDT",
+    "XLMUSDT",
+    "LTCUSDT",
+    "ADAUSDT",
+    "XMRUSDT",
+    "IOTAUSDT",
+    "TRXUSDT",
+)
+
+#: Bundan az kontrol coini ölçülebilirse kontrol yapılamamış sayılır ve hiçbir
+#: "Geçti" doğrulanamaz.
+CONTROL_MIN_MEASURED = 5
+
+
+@dataclass(frozen=True)
+class ControlCoin:
+    """Bir kontrol coininde al-ve-tut ve beş kural; ölçülemediyse nedeni."""
+
+    symbol: str
+    benchmark: Performance | None = None
+    #: ``RULES`` sırasıyla.
+    rules: tuple[Performance, ...] = ()
+    start_open_time: int = 0
+    end_open_time: int = 0
+    problem: str = ""
+
+    @property
+    def measured(self) -> bool:
+        return self.benchmark is not None
+
+    def better(self, index: int) -> bool:
+        """Kural bu coinde al-ve-tut'tan iki ölçüde de iyi mi (§5'teki koşul)."""
+        if self.benchmark is None:
+            return False
+        perf = self.rules[index]
+        return (
+            perf.sharpe > self.benchmark.sharpe
+            and perf.max_drawdown_pct < self.benchmark.max_drawdown_pct
+        )
+
+
+def measure_control(
+    frame: pd.DataFrame, *, symbol: str, cost: float, rules: Sequence[TrendRule] = RULES
+) -> ControlCoin:
+    """Kontrol coininde ölçüm: BTC ve SOL'la aynı dönem tanımı ve maliyet, bootstrap yok."""
+    frame = frame.sort_values("open_time").reset_index(drop=True)
+    needed = EVALUATION_START + 2 * DAYS_PER_YEAR
+    if len(frame) < needed:
+        return ControlCoin(
+            symbol, problem=f"{len(frame):,} günlük mum var, en az {needed:,} gerekir"
+        )
+    times = frame["open_time"].to_numpy()
+    returns, decision_days = evaluation_arrays(frame)
+    all_in = np.ones(returns.size, dtype=bool)
+    return ControlCoin(
+        symbol,
+        benchmark=measure(all_in, returns, cost),
+        rules=tuple(
+            measure(rule.positions(frame)[decision_days], returns, cost) for rule in rules
+        ),
+        start_open_time=int(times[EVALUATION_START]),
+        end_open_time=int(times[-1]),
+    )
+
+
+@dataclass(frozen=True)
+class ControlSummary:
+    rule: TrendRule
+    #: Kuralın al-ve-tut'tan iki ölçüde de iyi olduğu kontrol coini sayısı.
+    better: int
+    measured: int
+    #: Kuralın Sharpe'ı eksi al-ve-tut'unki, ölçülen coinlerin ortancası (bilgi).
+    median_sharpe_difference: float
+
+    @property
+    def holds(self) -> bool:
+        return self.measured >= CONTROL_MIN_MEASURED and 2 * self.better >= self.measured
+
+
+def control_summaries(
+    coins: Sequence[ControlCoin], rules: Sequence[TrendRule] = RULES
+) -> dict[str, ControlSummary]:
+    measured = [coin for coin in coins if coin.measured]
+    summaries: dict[str, ControlSummary] = {}
+    for index, rule in enumerate(rules):
+        differences = [
+            coin.rules[index].sharpe - coin.benchmark.sharpe
+            for coin in measured
+            if coin.benchmark is not None
+        ]
+        summaries[rule.key] = ControlSummary(
+            rule=rule,
+            better=sum(coin.better(index) for coin in measured),
+            measured=len(measured),
+            median_sharpe_difference=float(np.median(differences)) if differences else math.nan,
+        )
+    return summaries
+
+
+def final_verdict(
+    item: RuleResult, benchmark: Performance, control: ControlSummary,
+    alpha: float = FDR_ALPHA,
+) -> str:
+    """Kontrol coinleriyle birlikte son karar (§5a): kontrol yalnızca "Geçti"yi düşürür."""
+    verdict = item.verdict(benchmark, alpha)
+    if verdict == "Geçti" and not control.holds:
+        return "Belirsiz"
+    return verdict

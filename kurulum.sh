@@ -157,7 +157,8 @@ fi
 # da sayarak yapar (docs/TUR2-ONKAYIT.md).
 # "bash kurulum.sh trend" günlük trend testini bir kez çalıştırır: BTCUSDT ve
 # SOLUSDT'nin bütün günlük mumlarını indirir, beş klasik kuralı al-ve-tut'la
-# kıyaslar ve farkı blok bootstrap ile sınar (docs/TREND-ONKAYIT.md).
+# kıyaslar, farkı blok bootstrap ile sınar ve aynı kuralları on kontrol
+# coininde ölçer (docs/TREND-ONKAYIT.md).
 SADECE_TARAMA=0
 TUR2=0
 TREND=0
@@ -433,8 +434,9 @@ if [ "$TREND" = "1" ]; then
   # Önceden belirlenmiş sınama (docs/TREND-ONKAYIT.md). Kurallar, maliyet,
   # alternatif dönem sayısı ve tohum kodda sabit; buradan değiştirilmez.
   baslik "4/$ADIM_SAYISI  Günlük trend testi (BTCUSDT ve SOLUSDT, beş kural, bir kez)"
-  printf "   Önce iki coinin bütün günlük mumları Binance'in herkese açık ucundan iner:\n"
-  printf '   coin başına birkaç istek, anahtar gerekmez, hesabınıza hiçbir istek gitmez.\n'
+  printf "   Önce BTC, SOL ve on kontrol coininin bütün günlük mumları Binance'in herkese\n"
+  printf '   açık ucundan iner: coin başına birkaç istek, anahtar gerekmez, hesabınıza\n'
+  printf '   hiçbir istek gitmez.\n'
   printf '   Sonra her kural al-ve-tut ile kıyaslanır ve fark, geçmişin parçalarından\n'
   printf '   kurulan 10.000 alternatif dönemde sınanır. Birkaç dakika sürebilir; ekrana\n'
   printf '   ilerleme yazar. Uygulama açıksa kapatmanız gerekmez.\n\n'

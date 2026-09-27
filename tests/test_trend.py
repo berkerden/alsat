@@ -7,6 +7,8 @@
   olmayan veride yanlış alarm vermez, bilerek eğilim konmuş veride kural geçer.
 * Komut satırı aracı en fazla birkaç istek gönderir, bozuk ya da eksik
   veride sınamayı başlatmaz ve bir kez çalışır.
+* Kontrol coinleri yalnızca "Geçti"yi doğrular ya da düşürür; Binance'te
+  artık olmayan bir çift sınamayı durdurmaz, "ölçülemedi" diye yazılır.
 """
 
 from __future__ import annotations
@@ -20,6 +22,7 @@ import pytest
 from albsat.cli import trend as trend_cli
 from albsat.data.klines import KLINE_COLUMNS
 from albsat.data.store import KlineStore
+from albsat.exchange.http import HttpError
 from albsat.research import trend
 from albsat.research.trend_report import render
 
@@ -246,6 +249,50 @@ def test_karar_on_kayittaki_gibi(sharpe, drawdown, q_value, verdict):
     assert _result(sharpe, drawdown, q_value).verdict(benchmark) == verdict
 
 
+def _control(better: int, measured: int) -> trend.ControlSummary:
+    return trend.ControlSummary(trend.RULES[0], better, measured, 0.0)
+
+
+@pytest.mark.parametrize(
+    ("q_value", "control", "verdict"),
+    [
+        (0.05, _control(4, 8), "Geçti"),      # yarısında iyi: tutar
+        (0.05, _control(3, 8), "Belirsiz"),   # yarıdan azında iyi: düşer
+        (0.05, _control(4, 4), "Belirsiz"),   # beşten az coin ölçüldü: doğrulanamaz
+        (0.05, _control(0, 0), "Belirsiz"),
+        (0.30, _control(8, 8), "Belirsiz"),   # kontrol hiçbir kararı yukarı çekmez
+    ],
+)
+def test_kontrol_yalnizca_gectiyi_dogrular_ya_da_dusurur(q_value, control, verdict):
+    benchmark = trend.Performance(0.0, 0.0, 70.0, 1.0, 100.0, 1, 1000)
+    item = _result(1.2, 40.0, q_value)
+    assert trend.final_verdict(item, benchmark, control) == verdict
+    worse = _result(0.8, 40.0, 0.01)
+    assert trend.final_verdict(worse, benchmark, control) == "Geçmedi"
+
+
+def test_kontrol_listesi_sabit_ve_bugunun_listesi_degil():
+    assert len(trend.CONTROL_SYMBOLS) == 10
+    assert len(set(trend.CONTROL_SYMBOLS)) == 10
+    assert "BTCUSDT" not in trend.CONTROL_SYMBOLS and "SOLUSDT" not in trend.CONTROL_SYMBOLS
+    stable = {"USDCUSDT", "BUSDUSDT", "TUSDUSDT", "FDUSDUSDT", "DAIUSDT"}
+    assert not stable & set(trend.CONTROL_SYMBOLS)
+
+
+def test_kontrol_coini_ayni_donem_tanimiyla_olculur():
+    frame = daily_frame(regimes(1_500, 31))
+    coin = trend.measure_control(frame, symbol="ETHUSDT", cost=COST)
+    full = trend.evaluate_symbol(frame, symbol="ETHUSDT", cost=COST, resamples=50)
+    assert coin.benchmark == full.benchmark
+    assert coin.rules == tuple(item.performance for item in full.rules)
+    assert coin.start_open_time == full.start_open_time
+
+    short = trend.measure_control(frame.iloc[:900], symbol="ETHUSDT", cost=COST)
+    assert not short.measured and "en az" in short.problem
+    summaries = trend.control_summaries([coin, short])
+    assert summaries["sma200"].measured == 1
+
+
 def test_duzeltme_on_sinamayi_tek_aile_sayar():
     frames = [daily_frame(regimes(1_300, seed)) for seed in (1, 2)]
     results = [trend.evaluate_symbol(frame, symbol=name, cost=COST, resamples=100)
@@ -272,6 +319,9 @@ class FakeKlines:
 
     def klines(self, *, symbol, interval, start_time=None, end_time=None, limit=1000):
         self.calls += 1
+        if symbol not in self.frames:
+            raise HttpError(400, "https://api.binance.com/api/v3/klines",
+                            '{"code":-1121,"msg":"Invalid symbol."}')
         frame = self.frames[symbol]
         rows = frame[(frame["open_time"] >= start_time) & (frame["open_time"] <= end_time)]
         out = []
@@ -291,6 +341,9 @@ def market():
     return {
         "BTCUSDT": daily_frame(regimes(3_000, 11), end=today),
         "SOLUSDT": daily_frame(no_trend(2_000, 12), end=today),
+        "ETHUSDT": daily_frame(regimes(2_500, 13), end=today),
+        # İşlemi bir yıl önce durmuş çift: kendi son gününe kadar ölçülür.
+        "EOSUSDT": daily_frame(no_trend(1_800, 14), end=today - dt.timedelta(days=365)),
     }
 
 
@@ -333,15 +386,22 @@ def test_komut_bir_kez_calisir_ve_raporu_yazar(market, tmp_path, monkeypatch, ca
     monkeypatch.setattr(trend_cli, "PublicHttp", lambda: source)
     monkeypatch.setattr(trend_cli, "enable_system_trust", lambda: None)
     report = tmp_path / "trend-sonuc.txt"
-    args = ["--veri-dizini", str(tmp_path / "veri"), "--rapor", str(report), "--orneklem", "200"]
+    args = ["--veri-dizini", str(tmp_path / "veri"), "--rapor", str(report), "--orneklem", "200",
+            "--kontrol", "ETHUSDT", "EOSUSDT", "XMRUSDT"]
 
     assert trend_cli.main(args) == 0
     text = report.read_text(encoding="utf-8")
     assert "GÜNLÜK TREND TESTİ" in text and "KARAR" in text
     assert "10 sınama (5 kural × 2 coin)" in text
+    assert "Kontrol: aynı kurallar 3 coinde daha (2 ölçülebildi)" in text
+    assert "XMRUSDT   ölçülemedi: Binance'te bu çift yok" in text
+    eos_end = (dt.datetime.now(dt.UTC).date() - dt.timedelta(days=365)).isoformat()
+    assert f"→ {eos_end}" in text, "işlemi durmuş çift kendi son gününe kadar ölçülür"
     assert KlineStore(tmp_path / "veri").exists("SOLUSDT", "1d")
+    assert KlineStore(tmp_path / "veri").exists("ETHUSDT", "1d")
     out = capsys.readouterr().out
     assert "SOLUSDT: 200/200 dönem" in out
+    assert "Kontrol coinleri ölçüldü: 2/3" in out
     calls = source.calls
 
     assert trend_cli.main(args) == 1
@@ -365,11 +425,18 @@ def test_rapor_kararlari_ve_dususleri_yazar():
         trend.evaluate_symbol(frame, symbol=name, cost=COST, resamples=100)
         for frame, name in zip(frames, ("BTCUSDT", "SOLUSDT"), strict=True)
     ])
-    text = render(results, [], ran_at=dt.datetime(2026, 9, 28, tzinfo=dt.UTC),
+    coins = [trend.measure_control(daily_frame(regimes(1_400, 23)), symbol="ETHUSDT",
+                                   cost=COST),
+             trend.ControlCoin("XMRUSDT", problem="Binance'te bu çift yok")]
+    text = render(results, [], controls=coins,
+                  ran_at=dt.datetime(2026, 9, 28, tzinfo=dt.UTC),
                   commit="abc1234", cost_detail="deneme", resamples=100, block=20,
                   seed=1)
     for rule in trend.RULES:
-        assert text.count(rule.name_tr) >= 6
+        assert text.count(rule.name_tr) >= 7
+    assert "KONTROL COİNLERİ" in text and "ölçülemedi" in text
+    # İki kontrol coininden biri ölçüldü (beşten az): hiçbir "Geçti" doğrulanamaz.
+    assert "Geçti\n" not in text.split("Kararların anlamı")[0]
     assert "Al-ve-tut'un en derin düşüşleri" in text
     assert "Bir gün geç uygulama" in text
     assert "yatırım tavsiyesi değildir" in text

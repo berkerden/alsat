@@ -31,6 +31,9 @@ ona sorar. Olası yönler (Berk'in kararı; hiçbiri başlatılmadı):
   günlük grafik, BTC ve SOL, al-ve-tut kıyası, bir kez
   (`bash kurulum.sh trend`). Ön kayıt `docs/TREND-ONKAYIT.md` çalıştırmadan
   önce gönderildi; önceki 12.021 adayın bu aileye neden sayılmadığı §2'de.
+  Berk'in "farklı coinler" sorusu üzerine, çalıştırmadan önce on kontrol
+  coini eklendi (§5a): 12 Ağustos 2018'in ilk onu; yalnızca "Geçti"yi
+  doğrular ya da "Belirsiz"e düşürür.
   Berk'e söylenen: beklenti al-ve-tut'u geçmek değil büyük düşüşlerin bir
   kısmından kaçmak; veri kısa, sonuç "Belirsiz" çıkabilir.
 * **Mac'te sınanmayanlar:** Telegram, `caffeinate`/`pmset`, Yarı Otomatik

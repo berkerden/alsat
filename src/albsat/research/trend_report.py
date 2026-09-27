@@ -12,12 +12,18 @@ from collections.abc import Sequence
 
 from albsat.data.klines import QualityReport
 from albsat.research.trend import (
+    CONTROL_MIN_MEASURED,
     DAYS_PER_YEAR,
     EVALUATION_START,
     FDR_ALPHA,
     RULES,
+    ControlCoin,
+    ControlSummary,
     Performance,
+    RuleResult,
     SymbolResult,
+    control_summaries,
+    final_verdict,
 )
 
 LINE = "=" * 78
@@ -27,7 +33,8 @@ VERDICT_EXPLANATION = {
     "Geçti": "al-ve-tut'tan hem risk başına daha çok kazandırdı hem daha küçük düşüş "
     "yaşadı, ve bu üstünlük şansla açıklanamıyor.",
     "Belirsiz": "al-ve-tut'tan iyi göründü, ama üstünlüğü alternatif dönemlerde "
-    "yeterince sağlam değil; şanstan ayırt edilemedi.",
+    "yeterince sağlam değil ya da kontrol coinlerinin en az yarısında tutmadı; "
+    "şanstan ayırt edilemedi.",
     "Geçmedi": "al-ve-tut'tan iyi değil: risk başına getirisi daha düşük ya da en büyük "
     "düşüşü daha derin.",
 }
@@ -57,10 +64,20 @@ def cost_line(cost: float, detail: str) -> str:
     )
 
 
-def summary_lines(results: Sequence[SymbolResult]) -> list[str]:
+def verdict_text(item: RuleResult, benchmark: Performance, control: ControlSummary) -> str:
+    """Son karar; kontrol yüzünden düştüyse nedeniyle."""
+    verdict = final_verdict(item, benchmark, control)
+    if verdict != item.verdict(benchmark):
+        return f"{verdict} (kontrolde tutmadı: {control.better}/{control.measured} coin)"
+    return verdict
+
+
+def summary_lines(
+    results: Sequence[SymbolResult], controls: dict[str, ControlSummary]
+) -> list[str]:
     """En üstteki karar bölümü."""
     verdicts = [
-        (result, item, item.verdict(result.benchmark))
+        (result, item, final_verdict(item, result.benchmark, controls[item.rule.key]))
         for result in results
         for item in result.rules
     ]
@@ -96,15 +113,18 @@ def summary_lines(results: Sequence[SymbolResult]) -> list[str]:
             "kazandırmadı hem daha küçük düşüş yaşamadı. Ön kayda göre bu aile kapanır.",
         ]
     lines += ["", "Her sınamanın kararı:"]
-    for result, item, verdict in verdicts:
-        lines.append(f"  {result.symbol:<9}{item.rule.name_tr:<24}{verdict}")
+    for result, item, _ in verdicts:
+        text = verdict_text(item, result.benchmark, controls[item.rule.key])
+        lines.append(f"  {result.symbol:<9}{item.rule.name_tr:<24}{text}")
     lines += ["", "Kararların anlamı:"]
     for verdict, text in VERDICT_EXPLANATION.items():
         lines.append(f"  {verdict}: {text}")
     return lines
 
 
-def symbol_block(result: SymbolResult, block: float) -> list[str]:
+def symbol_block(
+    result: SymbolResult, block: float, controls: dict[str, ControlSummary]
+) -> list[str]:
     years = result.benchmark.days / DAYS_PER_YEAR
     lines = [
         THIN,
@@ -142,7 +162,8 @@ def symbol_block(result: SymbolResult, block: float) -> list[str]:
         )
     lines.append("")
     for item in result.rules:
-        lines.append(f"  {item.rule.name_tr}: {item.verdict(result.benchmark)}")
+        text = verdict_text(item, result.benchmark, controls[item.rule.key])
+        lines.append(f"  {item.rule.name_tr}: {text}")
 
     if result.drawdowns:
         lines += [
@@ -175,10 +196,77 @@ def symbol_block(result: SymbolResult, block: float) -> list[str]:
     return lines
 
 
+#: Kontrol tablosunda kuralların kısa adları.
+SHORT_NAMES = {
+    "sma200": "200g",
+    "kesisim_50_200": "50/200",
+    "kirilim_55_20": "55/20",
+    "kirilim_20_10": "20/10",
+    "momentum_365": "12ay",
+}
+
+
+def control_block(
+    coins: Sequence[ControlCoin], controls: dict[str, ControlSummary]
+) -> list[str]:
+    """Kontrol coinleri: her coinde her kural iyi mi, ve kural başına özet."""
+    lines = [
+        THIN,
+        "KONTROL COİNLERİ — aynı beş kural, hiç değiştirilmeden",
+        THIN,
+        "",
+        "  Liste: CoinMarketCap'in 12 Ağustos 2018 sırasıyla ilk on coin (BTC ve",
+        "  USDT hariç), sonuçlara bakılmadan seçildi. Her coin kendi ilk günlük",
+        f"  mumundan {EVALUATION_START} gün sonra başlar; maliyet aynı. p-değeri yok: kontrol",
+        "  yalnızca BTC ya da SOL'daki bir \"Geçti\"yi doğrular ya da düşürür.",
+        "  +: kural o coinde al-ve-tut'tan hem Sharpe'ta hem en büyük düşüşte iyi.",
+        "",
+        f"  {'':<10}{'Dönem':<25}{'Al-ve-tut':>15}"
+        + "".join(f"{SHORT_NAMES.get(rule.key, rule.key):>7}" for rule in RULES),
+        f"  {'':<10}{'':<25}{'Sharpe':>7}{'düşüş':>8}",
+    ]
+    for coin in coins:
+        if coin.benchmark is None:
+            lines.append(f"  {coin.symbol:<10}ölçülemedi: {coin.problem}")
+            continue
+        period = f"{_date(coin.start_open_time)} → {_date(coin.end_open_time)}"
+        marks = "".join(
+            f"{'+' if coin.better(index) else '-':>7}" for index in range(len(RULES))
+        )
+        lines.append(
+            f"  {coin.symbol:<10}{period:<25}{coin.benchmark.sharpe:>7.2f}"
+            f"{_pct(-coin.benchmark.max_drawdown_pct, 0):>8}{marks}"
+        )
+
+    lines += [
+        "",
+        f"  {'':<22}{'İyi olduğu':>12}{'Sharpe farkı':>15}{'Kontrol':>10}",
+        f"  {'':<22}{'coin':>12}{'(ortanca)':>15}",
+    ]
+    for rule in RULES:
+        summary = controls[rule.key]
+        median = (
+            "—" if summary.measured == 0 else f"{summary.median_sharpe_difference:+.2f}"
+        )
+        state = "tuttu" if summary.holds else "tutmadı"
+        lines.append(
+            f"  {rule.name_tr:<22}{f'{summary.better}/{summary.measured}':>12}"
+            f"{median:>15}{state:>10}"
+        )
+    lines += [
+        "",
+        f"  Kontrol, en az {CONTROL_MIN_MEASURED} coin ölçülebildiyse ve kural ölçülen coinlerin",
+        "  en az yarısında iyiyse tutar. Coinler BTC ile birlikte hareket ettiği için",
+        "  bağımsız kanıt sayılmaz.",
+    ]
+    return lines
+
+
 def render(
     results: Sequence[SymbolResult],
     quality: Sequence[QualityReport],
     *,
+    controls: Sequence[ControlCoin],
     ran_at: dt.datetime,
     commit: str,
     cost_detail: str,
@@ -188,6 +276,8 @@ def render(
 ) -> str:
     cost = results[0].cost if results else 0.0
     tests = sum(len(result.rules) for result in results)
+    summaries = control_summaries(controls)
+    measured = sum(coin.measured for coin in controls)
     lines = [
         LINE,
         "GÜNLÜK TREND TESTİ — SONUÇ",
@@ -199,18 +289,22 @@ def render(
         f"ortalama parça {block:g} gün, tohum {seed}",
         f"Aile: {tests} sınama ({len(RULES)} kural × {len(results)} coin), "
         f"Benjamini–Hochberg, yanlış buluş payı %{FDR_ALPHA * 100:.0f}",
+        f"Kontrol: aynı kurallar {len(controls)} coinde daha ({measured} ölçülebildi); "
+        "yalnızca \"Geçti\"yi doğrular",
         "Önceki turların 12,021 giriş sinyali adayı bu aileye sayılmadı; gerekçesi ön",
         "kayıt §2'de. Sayılsaydı hiçbir sınama geçemezdi (eşik 0.10/12,031 ≈ 0.0000083,",
         f"bu sınamanın en küçük p'si 1/{resamples + 1:,}).",
         "",
     ]
-    lines += summary_lines(results)
+    lines += summary_lines(results, summaries)
     lines += ["", "VERİ", ""]
     lines += ["  " + report.summary_tr() for report in quality]
     lines.append("")
     for result in results:
-        lines += symbol_block(result, block)
+        lines += symbol_block(result, block, summaries)
         lines.append("")
+    lines += control_block(controls, summaries)
+    lines.append("")
     lines += [
         LINE,
         "Kurallar (ön kayıttaki haliyle):",

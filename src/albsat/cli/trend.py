@@ -6,13 +6,16 @@ Kullanım (Mac'te ``bash kurulum.sh trend`` bunu çağırır)::
 
 Ne yapar:
 
-1. BTCUSDT ve SOLUSDT'nin bütün günlük mumlarını Binance'in herkese açık
-   ``GET /api/v3/klines`` ucundan indirir. Günlük veri küçüktür: coin başına
-   3-4 istek. Anahtar gerekmez, hesaba hiçbir istek gitmez.
-2. Veri kalitesini denetler. Eksik, bozuk ya da güncel olmayan veride sınama
-   hiç başlamaz; o çalıştırma sayılmaz.
+1. BTCUSDT ve SOLUSDT'nin ve on kontrol coininin bütün günlük mumlarını
+   Binance'in herkese açık ``GET /api/v3/klines`` ucundan indirir. Günlük
+   veri küçüktür: coin başına 3-4 istek. Anahtar gerekmez, hesaba hiçbir
+   istek gitmez.
+2. Veri kalitesini denetler. BTC ya da SOL'un verisi eksik, bozuk ya da
+   güncel değilse sınama hiç başlamaz; o çalıştırma sayılmaz. Bir kontrol
+   coini Binance'te artık yoksa ya da verisi bozuksa raporda "ölçülemedi"
+   diye yazılır.
 3. Beş kuralı ve al-ve-tut'u ölçer, sağlamlık sınamasını (blok bootstrap)
-   yapar, raporu yazar.
+   yapar, kontrol coinlerinde aynı kuralları ölçer, raporu yazar.
 
 **Bir kez çalışır.** Rapor dosyası varsa hiçbir şey indirmeden durur: aynı
 soruyu yeniden sormak sonucu şansa açar (ön kayıt §7).
@@ -54,6 +57,10 @@ MAX_REQUESTS_PER_SYMBOL = 8
 
 DEFAULT_REPORT = Path("trend-sonuc.txt")
 
+#: Binance'in "böyle bir çift yok" hata kodu: çift kapanmış ya da adı değişmiş.
+INVALID_SYMBOL = "-1121"
+NO_SUCH_PAIR = "Binance'te bu çift yok (kapanmış ya da adı değişmiş)"
+
 
 class DataProblem(RuntimeError):
     """Sınamayı başlatmaya engel veri sorunu; sınama sayılmaz."""
@@ -65,6 +72,8 @@ def build_parser() -> argparse.ArgumentParser:
         description="Günlük trend testi: beş klasik kural ve al-ve-tut",
     )
     parser.add_argument("--semboller", nargs="+", default=["BTCUSDT", "SOLUSDT"])
+    parser.add_argument("--kontrol", nargs="*", default=list(trend.CONTROL_SYMBOLS),
+                        help=argparse.SUPPRESS)
     parser.add_argument("--veri-dizini", default="./veri", type=Path)
     parser.add_argument("--rapor", default=DEFAULT_REPORT, type=Path)
     parser.add_argument("--indirme-yok", action="store_true",
@@ -120,6 +129,21 @@ def check_data(frame: pd.DataFrame, symbol: str, now_ms: int) -> QualityReport:
     return report
 
 
+def control_data(frame: pd.DataFrame, symbol: str) -> tuple[QualityReport, str]:
+    """Kontrol coininin verisi ölçülebilir mi; değilse nedeni.
+
+    BTC ve SOL'dan farkı: güncel olmayan veri reddedilmez. İşlemi durmuş bir
+    coin kendi son gününe kadar ölçülür; listeden düşenleri atmak hayatta
+    kalma yanılgısını büyütür.
+    """
+    report = check_quality(frame, symbol=symbol, interval=INTERVAL)
+    if report.rows == 0:
+        return report, "veri yok"
+    if not report.usable:
+        return report, f"veri sorunlu ({report.summary_tr()})"
+    return report, ""
+
+
 def cost_per_side(root: Path, maker: str | None, taker: str | None) -> tuple[float, str]:
     """Tek yön maliyeti (oran) ve açıklaması.
 
@@ -172,6 +196,21 @@ def main(argv: list[str] | None = None) -> int:
     store = KlineStore(args.veri_dizini)
     frames: dict[str, pd.DataFrame] = {}
     quality: list[QualityReport] = []
+    control_frames: dict[str, pd.DataFrame] = {}
+    control_problems: dict[str, str] = {}
+
+    def accept_control(symbol: str, frame: pd.DataFrame, *, save: bool) -> None:
+        report, problem = control_data(frame, symbol)
+        if problem:
+            control_problems[symbol] = problem
+            print(f"    {symbol}: ölçülemeyecek, {problem}", flush=True)
+            return
+        if save:
+            store.write(frame, symbol=symbol, interval=INTERVAL)
+        print("    " + report.summary_tr(), flush=True)
+        quality.append(report)
+        control_frames[symbol] = frame
+
     try:
         if args.indirme_yok:
             now_ms = int(dt.datetime.now(dt.UTC).timestamp() * 1000)
@@ -179,6 +218,11 @@ def main(argv: list[str] | None = None) -> int:
                 frame = closed_only(store.read(symbol, INTERVAL))
                 quality.append(check_data(frame, symbol, now_ms))
                 frames[symbol] = frame
+            for symbol in args.kontrol:
+                if not store.exists(symbol, INTERVAL):
+                    control_problems[symbol] = "diskte veri yok"
+                    continue
+                accept_control(symbol, closed_only(store.read(symbol, INTERVAL)), save=False)
         else:
             enable_system_trust()
             http = PublicHttp()
@@ -195,6 +239,20 @@ def main(argv: list[str] | None = None) -> int:
                 print("    " + report.summary_tr(), flush=True)
                 quality.append(report)
                 frames[symbol] = frame
+            if args.kontrol:
+                print("\n  Kontrol coinleri (aynı kurallar, yalnızca sağlama):", flush=True)
+            for symbol in args.kontrol:
+                print(f"  {symbol}: günlük mumlar indiriliyor "
+                      f"(en fazla {planned_requests(now_ms)} istek)...", flush=True)
+                try:
+                    frame = download(http, symbol, now_ms)
+                except HttpError as error:
+                    if error.status == 400 and INVALID_SYMBOL in error.body:
+                        control_problems[symbol] = NO_SUCH_PAIR
+                        print(f"    {symbol}: ölçülemeyecek, {NO_SUCH_PAIR}", flush=True)
+                        continue
+                    raise
+                accept_control(symbol, frame, save=True)
     except DataProblem as problem:
         print(f"\n{problem}\nSınama başlamadı; bu çalıştırma sayılmaz.", file=sys.stderr)
         return 2
@@ -229,8 +287,20 @@ def main(argv: list[str] | None = None) -> int:
             return 2
 
     results = trend.apply_correction(results)
+
+    coins = [
+        trend.measure_control(control_frames[symbol], symbol=symbol, cost=cost)
+        if symbol in control_frames
+        else trend.ControlCoin(symbol, problem=control_problems[symbol])
+        for symbol in args.kontrol
+    ]
+    if coins:
+        measured = sum(coin.measured for coin in coins)
+        print(f"\n  Kontrol coinleri ölçüldü: {measured}/{len(coins)}", flush=True)
+
     text = render(
         results, quality,
+        controls=coins,
         ran_at=dt.datetime.now(dt.UTC),
         commit=git_commit(),
         cost_detail=cost_detail,
