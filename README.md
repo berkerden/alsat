@@ -33,7 +33,7 @@ Fazlar arası devir notu: [`docs/DEVIR-NOTU.md`](docs/DEVIR-NOTU.md)
 | 4 | Risk motoru + kâğıt işlem + Telegram | ✅ Onaylandı |
 | 5 | Emir yürütme (**Demo Mode**) | ✅ Onaylandı |
 | 6 | Canlı yarı otomatik → tam otomatik | ✅ Onaylandı (Tam Otomatik kapıda kilitli) |
-| 7 | VPS dağıtımı, izleme, yedek, alarm | ⏳ Mac'te alarm testi geçti; onay bekleniyor (sunucu kiralanmadı, kurulumu hazır) |
+| 7 | VPS dağıtımı, izleme, yedek, alarm | ✅ Onaylandı (alarm Mac'te sınandı; sunucu kiralanmadı, kurulumu hazır) |
 
 Her fazın sonunda çalışma durur ve onay beklenir (SPEC.md §10).
 

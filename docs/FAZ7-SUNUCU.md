@@ -427,6 +427,7 @@ pozisyonun uzlaştırılması.
 
 ## 17. Onay
 
-Faz 7 onayı Berk'te. Kabul kriterinin gerçek karşılığı (gerçek gözcüyle alarm
-testi; tam kapsamda sunucuda 7/24 ve `reboot` denemesi) Berk'in kararına ve
-onayına bağlı adımlardır.
+**Faz 7, 27 Eylül 2026'da onaylandı.** Berk'in cümlesi: *"onaylıyorum"*.
+Kabul kriterinin alarm testi Berk'in Mac'inde gerçek Healthchecks.io ile
+geçti (§2). Sunucu kiralanmadı (kapsam kararı); sunucuda 7/24 çalışma ve
+`reboot` denemesi, sunucuya geçildiğinde §12'deki sırayla yapılır.
