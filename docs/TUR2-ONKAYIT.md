@@ -5,6 +5,8 @@
 teklifine *"evet"* dedi.
 **Çalıştırma:** Berk'in Mac'inde, uygulama kapalıyken
 `cd ~/Desktop/alsat && git pull && bash kurulum.sh tur2`
+**Sonuç (28 Eylül 2026):** kabul edilen örüntü yok; arama kapandı.
+Ayrıntı `TUR2-SONUC.md`.
 
 Bu belge tur çalıştırılmadan **önce** yazıldı ve depoya gönderildi. Tur burada
 yazılanla birebir çalıştırılır. Sonuç görüldükten sonra hiçbir ayar

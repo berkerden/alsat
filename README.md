@@ -19,6 +19,7 @@ Demo Mode'da emir yürütme: [`docs/FAZ5-DEMO-EMIR-YURUTME.md`](docs/FAZ5-DEMO-E
 Canlı işlem ve canlıya geçiş kapısı: [`docs/FAZ6-CANLI.md`](docs/FAZ6-CANLI.md)
 Sunucu, gözcü, yedek ve alarm: [`docs/FAZ7-SUNUCU.md`](docs/FAZ7-SUNUCU.md)
 İkinci kural arama turunun ön kaydı: [`docs/TUR2-ONKAYIT.md`](docs/TUR2-ONKAYIT.md)
+İkinci kural arama turunun sonucu: [`docs/TUR2-SONUC.md`](docs/TUR2-SONUC.md)
 Fazlar arası devir notu: [`docs/DEVIR-NOTU.md`](docs/DEVIR-NOTU.md)
 
 ---
@@ -103,10 +104,12 @@ Faz 2'nin ölçüm sonucu: bu kapsamda (BTCUSDT + SOLUSDT, 15m + 1h, 2-4 mumluk
 pencereler) çoklu test düzeltmesinden geçen örüntü yok; maliyet tamamen
 kaldırıldığında da yok. Ayrıntı [`docs/FAZ2-SONUC.md`](docs/FAZ2-SONUC.md).
 
-**İkinci kural arama turu** (27 Eylül 2026): aynı arama iki yıllık veriyle bir
-kez, Faz 2'nin 6.372 adayı da sayılarak çalıştırılır. Ne yapılacağı sonuçtan
-önce yazıldı: [`docs/TUR2-ONKAYIT.md`](docs/TUR2-ONKAYIT.md). Mac'te, uygulama
-kapalıyken `bash kurulum.sh tur2`.
+**İkinci kural arama turu** (28 Eylül 2026): aynı arama iki yıllık veriyle bir
+kez, Faz 2'nin 6.372 adayı da sayılarak çalıştırıldı (12.021 deneme). **Kabul
+edilen örüntü yok**; en yakın aday eşiğin 320 katı uzağında. Ön kayda göre bu
+kapsamdaki arama kapandı. Ön kayıt
+[`docs/TUR2-ONKAYIT.md`](docs/TUR2-ONKAYIT.md), sonuç
+[`docs/TUR2-SONUC.md`](docs/TUR2-SONUC.md).
 
 ---
 

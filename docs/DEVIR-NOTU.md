@@ -18,10 +18,13 @@ ona sorar. Olası yönler (Berk'in kararı; hiçbiri başlatılmadı):
   ve sunucuda canlı anahtar için ayrı ayrı yazılı onay alınır.
 * **Kural arayışı:** Faz 2'de kabul edilen kural çıkmadı; uygulama bugün
   yalnızca izler ve öneri üretmez. Yeni bir tarama turu çoklu test sorunudur
-  (§5, Faz 2-4 tuzakları); kural uydurulmaz. **27 Eylül 2026:** Berk ikinci
-  turu istedi (*"evet"*); ön kaydı `docs/TUR2-ONKAYIT.md`, komutu
-  `bash kurulum.sh tur2`. Kural deposu artık birikimli aday sayısını taşıyor
-  ve sonraki taramalar onu kendiliğinden düzeltmeye ekliyor.
+  (§5, Faz 2-4 tuzakları); kural uydurulmaz. **İkinci tur yapıldı ve
+  kapandı:** Berk 27 Eylül 2026'da istedi (*"evet"*), 28 Eylül'de Mac'te
+  çalıştırdı. 730 gün, 12.021 deneme (Faz 2'nin 6.372'si dahil), kabul
+  edilen örüntü yok, en yakın aday eşiğin 320 katı uzağında
+  (`docs/TUR2-SONUC.md`). Ön kayda göre aynı arama yeniden önerilmez. Kural
+  deposu birikimli aday sayısını (12.021) taşıyor; sonraki her tarama onu
+  kendiliğinden düzeltmeye ekliyor.
 * **Mac'te sınanmayanlar:** Telegram, `caffeinate`/`pmset`, Yarı Otomatik
   önerisi (§7).
 
