@@ -70,8 +70,11 @@ para ya da sır gerektirir; Berk'in yazılı onayıyla ve onun elinden yapılır
 * **Gerçek kapanışta alarm geliyor mu:** uygulama kapatılır, gözcü en geç ~10
   dakikada "down" alarmı verir; açılınca "up" gelir.
 
-Burada ikisi de sahte bir gözcü sunucusuyla uçtan uca sınandı (§14). Gerçek
-Healthchecks.io ile deneme Berk'in hesabıyla yapılır.
+Burada ikisi de sahte bir gözcü sunucusuyla uçtan uca sınandı (§14).
+**27 Eylül 2026'da Berk'in Mac'inde gerçek Healthchecks.io ile de geçti**
+(adımlar `/mnt/project-files/faz7/FAZ7-MAC-ADIMLARI.md`: hesap, `gozcu`,
+`gozcu-sina`, uygulamayı kapatıp alarmı bekleme). Berk'in cümlesi: *"bütün
+down ve up mesajları doğru şekilde geldi"*.
 
 ## 3. Dış gözcü (`notify/gozcu.py`)
 
@@ -379,9 +382,14 @@ uygulama burada "piyasa verisi gelmiyor" diyor, bu beklenen.
   ulaşılamıyor, "sorun var"; yedek var, yok, hata) gerçek tarayıcıda; 1280 px
   (oran 1 ve 2) ve 390 px (oran 2 ve 3), yatay taşma ve konsol hatası yok.
 
-Denenemeyenler: gerçek Healthchecks.io, gerçek sunucuda `reboot`, sunucudan
-Binance'e bağlantı, sunucuda canlı anahtar ve taşınan açık pozisyonun
-uzlaştırılması.
+**Berk'in Mac'inde (27 Eylül 2026):** gerçek Healthchecks.io hesabıyla gözcü
+kuruldu (ping adresi Anahtar Zinciri'ne), `gozcu-sina` "down" ve "up"
+mesajlarını getirdi, uygulama kapatılınca "down", yeniden açılınca "up"
+geldi.
+
+Denenemeyenler (sunucu kiralanmadığı için): gerçek sunucuda `reboot`,
+sunucudan Binance'e bağlantı, sunucuda canlı anahtar ve taşınan açık
+pozisyonun uzlaştırılması.
 
 ## 15. Şartnameden sapmalar
 
@@ -407,6 +415,15 @@ uzlaştırılması.
 * Yedek sunucunun diskinde; sunucu dışına kendiliğinden kopyalanmıyor. Elle
   indirme §12.11'de. Bir dış depolama (S3 benzeri) eklemek hesap ve sır
   gerektirir; istenirse ayrı karar.
+* **Gözcü bilerek kapatmayı çökmeden ayıramıyor.** Mac'te uygulama her
+  kapatıldığında 10-12 dakika sonra "down" gelir. Adım dosyası kapattıktan
+  sonra Healthchecks.io'da **Pause**'a basmayı öneriyor (kontrol, uygulama
+  yeniden açılıp ping atınca kendiliğinden devam eder). Bunu otomatik yapmak
+  Healthchecks'in yönetim API anahtarını gerektirir (ikinci bir sır);
+  yazılmadı.
+* Sunucuya geçilecekse önce sunucudaki sır deposu Berk'e yeniden sorulacak
+  (§6), sonra kiralama, gözcü (sunucu için ayrı kontrol) ve canlı anahtar için
+  her birinde yazılı onay alınacak.
 
 ## 17. Onay
 
