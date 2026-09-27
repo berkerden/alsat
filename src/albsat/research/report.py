@@ -127,6 +127,13 @@ def _pattern_list(
 
 def _correction_scope(result: ScanResult) -> str:
     """Düzeltmenin kaç deneme üzerinden yapıldığını söyleyen satır."""
+    if result.prior_tests:
+        return (
+            "Çoklu test düzeltmesi bu bölüm için değil, bu turun tamamı ve önceki\n"
+            f"turlar için yapıldı: {result.family_tests:,} deneme, bunun "
+            f"{result.prior_tests:,}'i önceki\n"
+            "turlardan. Aynı soruyu yeni veriyle yeniden sormak da bir denemedir."
+        )
     if result.family_tests and result.family_tests != result.candidates:
         return (
             "Çoklu test düzeltmesi bu bölüm için değil, koşunun tamamı için\n"
@@ -286,12 +293,15 @@ def header(
     threshold_text: str,
     *,
     diagnostic: bool = False,
+    prior_tests: int = 0,
+    days: int | None = None,
 ) -> str:
     today = dt.date.today().isoformat()
+    stage = "YENİ TUR" if prior_tests else "FAZ 2"
     title = (
-        "FAZ 2 — TEŞHİS TURU: YÖN BİLGİSİ VAR MI?"
+        f"{stage} — TEŞHİS TURU: YÖN BİLGİSİ VAR MI?"
         if diagnostic
-        else "FAZ 2 — ÖRÜNTÜ KEŞFİ VE BACKTEST"
+        else f"{stage} — ÖRÜNTÜ KEŞFİ VE BACKTEST"
     )
     lines = [
         LINE,
@@ -300,6 +310,13 @@ def header(
         f"Tarih: {today}",
         f"Kapsam: {', '.join(symbols)} — {', '.join(intervals)}",
     ]
+    if days is not None:
+        lines.append(f"Veri: en yeni mumdan geriye {days} gün.")
+    if prior_tests:
+        lines.append(
+            f"Önceki turlarda denenen aday: {prior_tests:,}. Kabul kararı bu turun "
+            "adaylarıyla birlikte hepsi üzerinden verilir."
+        )
     if diagnostic:
         lines += [
             "Maliyet: SIFIR sayıldı (komisyon, spread, kayma ve eşik dahil).",

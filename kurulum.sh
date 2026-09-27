@@ -152,7 +152,11 @@ fi
 # Faz 7: "gozcu" uygulama kapanınca alarm veren gözcüyü kurar, "gozcu-sina"
 # alarmı sınar; "yedek" hemen yedek alır, "geri-yukle <dosya>" yedeği geri
 # yükler (uygulama kapalıyken).
+# "bash kurulum.sh tur2" önceden belirlenmiş ikinci kural arama turunu bir kez
+# çalıştırır: iki yıllık 15m/1h verisini indirir, taramayı Faz 2'nin adaylarını
+# da sayarak yapar (docs/TUR2-ONKAYIT.md).
 SADECE_TARAMA=0
+TUR2=0
 TESHIS=0
 ARAYUZ=0
 TEK_ADIM=""
@@ -162,11 +166,12 @@ case "${1:-}" in
   tarama) SADECE_TARAMA=1 ;;
   teshis) SADECE_TARAMA=1; TESHIS=1 ;;
   arayuz) ARAYUZ=1 ;;
+  tur2) TUR2=1 ;;
   telegram|anahtar|komisyon|demo-anahtar|demo-sina|canli-anahtar|canli-sina) TEK_ADIM="$1" ;;
   gozcu|gozcu-sina|yedek|geri-yukle) TEK_ADIM="$1" ;;
   *)
     hata "Bilinmeyen seçenek: $1"
-    printf 'Kullanılabilecekler: tarama, teshis, arayuz, telegram, anahtar, komisyon,\n'
+    printf 'Kullanılabilecekler: tarama, teshis, tur2, arayuz, telegram, anahtar, komisyon,\n'
     printf '                     demo-anahtar, demo-sina, canli-anahtar, canli-sina,\n'
     printf '                     gozcu, gozcu-sina, yedek, geri-yukle\n'
     printf 'Seçeneksiz çalıştırmak için:  bash kurulum.sh\n'
@@ -330,6 +335,83 @@ if [ "$TEK_ADIM" = "canli-sina" ]; then
   printf '   birkaç saniye içinde iptal edilir. Göndermeden önce coin adını yazmanız istenir.\n\n'
   python -m albsat.cli.canli --sina
   exit $?
+fi
+
+if [ "$TUR2" = "1" ]; then
+  # Önceden belirlenmiş tur (docs/TUR2-ONKAYIT.md). Buradaki sayılar o belgeyle
+  # aynı kalmalı; değiştirmek turu başka bir deneme yapar.
+  TUR2_GUN=730
+  TUR2_ONCEKI_ADAY=6372
+  TUR2_RAPOR="tur2-oruntu-sonuc.txt"
+  TUR2_VERI="tur2-veri-sonuc.txt"
+
+  if [ -s "$TUR2_RAPOR" ]; then
+    hata "İkinci tur daha önce tamamlanmış: $PWD/$TUR2_RAPOR"
+    printf '\nBu tur bir kez çalıştırılır. Yeniden çalıştırmak aynı soruyu bir kez\n'
+    printf 'daha sormak olur ve sonucu şansa açar. Raporu açmak için:\n'
+    printf '   open "%s"\n' "$TUR2_RAPOR"
+    exit 1
+  fi
+
+  if ! python -c 'import sys
+from albsat.core.instance import AlreadyRunning, InstanceLock
+lock = InstanceLock("veri", purpose="tur2 denetimi")
+try:
+    lock.acquire()
+except AlreadyRunning:
+    sys.exit(1)
+lock.release()' 2>/dev/null; then
+    hata "Uygulama şu an açık."
+    printf '\nÖnce uygulamayı kapatın: arayüzün çalıştığı Terminal penceresinde\n'
+    printf 'Control-C tuşlayın. Sonra bu komutu yeniden çalıştırın.\n'
+    exit 1
+  fi
+
+  baslik "4/$ADIM_SAYISI  İki yıllık veri indiriliyor (BTCUSDT ve SOLUSDT, 15m ve 1h)"
+  printf "   Binance'in herkese açık arşivinden iner; anahtar gerekmez, hesabınıza\n"
+  printf '   hiçbir istek gitmez. İlk seferde birkaç dakika sürer; her dosya ekrana\n'
+  printf '   yazılır. Daha önce indirilmiş dosyalar tekrar indirilmez.\n\n'
+
+  python -m albsat.cli.feasibility \
+    --semboller BTCUSDT SOLUSDT \
+    --periyotlar 15m 1h \
+    --gun "$TUR2_GUN" 2>&1 | tee "$TUR2_VERI"
+  if [ "${PIPESTATUS[0]}" != "0" ]; then
+    hata "Veri indirilemedi. Tarama başlamadı."
+    printf '\nİnternet bağlantınızı kontrol edip aynı komutu yeniden çalıştırın.\n'
+    printf 'Sorun sürerse yukarıdaki son 20 satırı Claude ile paylaşın.\n'
+    exit 1
+  fi
+
+  baslik "5/$ADIM_SAYISI  Kural araması: önceden belirlenmiş ikinci tur"
+  printf '   Bu adım internete çıkmaz; indirilen iki yıllık veriyi okur.\n'
+  printf "   Faz 2'nin %s adayı da sayılır; kabul çıtası ona göre yükselir.\n" "$TUR2_ONCEKI_ADAY"
+  printf '   Birkaç dakika ile yarım saat arası sürebilir; ekrana ilerleme yazar.\n'
+  printf "   Mac'in kapağını kapatmayın.\n\n"
+
+  # Faz 2'nin kural deposu bir kez kenara alınır; arayüz bundan sonra bu
+  # turun sonucunu gösterir.
+  if [ -f veri/kurallar.json ] && [ ! -f veri/kurallar-faz2.json ]; then
+    cp veri/kurallar.json veri/kurallar-faz2.json
+  fi
+
+  python -m albsat.cli.research \
+    --gun "$TUR2_GUN" \
+    --onceki-aday "$TUR2_ONCEKI_ADAY" \
+    --rapor "$TUR2_RAPOR"
+  TUR2_SONUC=$?
+
+  baslik "Bitti"
+  if [ "$TUR2_SONUC" = "0" ]; then
+    printf 'Tarama raporu:  %s%s%s\n' "$KALIN" "$PWD/$TUR2_RAPOR" "$SIFIR"
+    printf 'Veri özeti:     %s%s%s\n' "$KALIN" "$PWD/$TUR2_VERI" "$SIFIR"
+    printf '\nİki dosyanın içeriğini Claude ile paylaşın. Raporu açmak için:\n'
+    printf '   open "%s"\n' "$TUR2_RAPOR"
+  else
+    hata "Tarama tamamlanmadı; tur sayılmadı."
+    printf 'Yukarıdaki son 20 satırı Claude ile paylaşın.\n'
+  fi
+  exit "$TUR2_SONUC"
 fi
 
 if [ "$ARAYUZ" = "1" ]; then

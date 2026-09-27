@@ -182,12 +182,13 @@ def _data_status(
 def _no_rules_explanation(ruleset: RuleSet, sections: tuple[SectionSummary, ...]) -> Explanation:
     """Faz 2'nin ölçtüğü sonucu kullanıcının diliyle anlatır."""
     run = ruleset.kosu
+    prior = f"önceki turların {run.onceki_aday:,} adayı dahil " if run.onceki_aday else ""
     lines = [
         f"Tarama {run.toplam_aday:,} aday denedi; çoklu test düzeltmesinden "
         "geçen örüntü çıkmadı.",
         f"Bir örüntünün kabul edilmesi için gereken p-değeri: "
         f"{run.kabul_esigi_p:.7f} (yanlış buluş payı %{run.alpha * 100:.0f}, "
-        f"{run.toplam_aday:,} deneme üzerinden).",
+        f"{prior}{run.duzeltme_denemesi:,} deneme üzerinden).",
         cost_threshold_text(run.maliyet),
     ]
     if sections:

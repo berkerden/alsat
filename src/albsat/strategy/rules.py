@@ -280,6 +280,17 @@ class RunSummary:
     maliyet: CostAssumptions
     veri_baslangic_utc: str = ""
     veri_bitis_utc: str = ""
+    #: Kabul kararının ailesine eklenen, önceki turlarda denenmiş aday sayısı.
+    onceki_aday: int = 0
+    #: Bu tur dahil bugüne kadar kabul kararına sayılan toplam aday. Bir
+    #: sonraki tur bunu kendi ``onceki_aday``'ı olarak okur; teşhis turu
+    #: kabul kararı vermediği için bu sayıyı artırmaz, yalnızca taşır.
+    birikimli_aday: int = 0
+
+    @property
+    def duzeltme_denemesi(self) -> int:
+        """Kabul kararının kaç deneme üzerinden verildiği (önceki turlar dahil)."""
+        return self.toplam_aday + self.onceki_aday
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> RunSummary:
@@ -296,6 +307,8 @@ class RunSummary:
             maliyet=CostAssumptions.from_dict(payload["maliyet"]),
             veri_baslangic_utc=str(payload.get("veri_baslangic_utc", "")),
             veri_bitis_utc=str(payload.get("veri_bitis_utc", "")),
+            onceki_aday=int(payload.get("onceki_aday", 0)),
+            birikimli_aday=int(payload.get("birikimli_aday", 0)),
         )
 
 
@@ -505,6 +518,7 @@ def build_ruleset(
     pencereler: Sequence[int],
     veri_baslangic_utc: str = "",
     veri_bitis_utc: str = "",
+    onceki_aday: int = 0,
 ) -> RuleSet:
     """Tarama bölümlerinden kural kümesi üretir.
 
@@ -593,6 +607,8 @@ def build_ruleset(
             maliyet=cost,
             veri_baslangic_utc=veri_baslangic_utc,
             veri_bitis_utc=veri_bitis_utc,
+            onceki_aday=int(onceki_aday),
+            birikimli_aday=int(onceki_aday) + (0 if teshis_turu else total_candidates),
         ),
         bolumler=tuple(summaries),
         kurallar=tuple(accepted),

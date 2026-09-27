@@ -84,6 +84,10 @@ class BootstrapResult:
         )
 
 
+#: Bootstrap yinelemeleri bu büyüklükte parçalar hâlinde çekilir (bellek sınırı).
+BOOTSTRAP_CHUNK = 10_000
+
+
 def bootstrap_mean(
     values: np.ndarray,
     *,
@@ -105,17 +109,25 @@ def bootstrap_mean(
         return BootstrapResult(mean, mean, mean, 1.0, 0)
 
     generator = np.random.default_rng(seed)
-    draws = generator.integers(0, count, size=(iterations, count))
-    means = values[draws].mean(axis=1)
-
     observed = float(values.mean())
+    centred = values - observed
+
+    # Parça parça: çözünürlük turu 200.000 yinelemeye çıkabiliyor ve tek
+    # seferde çekilen indis matrisi gigabaytları bulur. Üreteç aynı akışı
+    # sırayla verdiği için sonuç tek seferde çekmekle birebir aynıdır.
+    means = np.empty(iterations, dtype=float)
+    reached = 0
+    for start in range(0, iterations, BOOTSTRAP_CHUNK):
+        size = min(BOOTSTRAP_CHUNK, iterations - start)
+        draws = generator.integers(0, count, size=(size, count))
+        means[start:start + size] = values[draws].mean(axis=1)
+        reached += int(np.count_nonzero(centred[draws].mean(axis=1) >= observed))
+
     low, high = np.percentile(means, [alpha / 2 * 100, (1 - alpha / 2) * 100])
 
-    centred = values - observed
-    null_means = centred[draws].mean(axis=1)
     # +1 düzeltmesi: hiçbir yeniden örnekleme ulaşamazsa p sıfır değil,
     # "iterations kadar denemede görülmedi" demektir.
-    p_value = float((np.count_nonzero(null_means >= observed) + 1) / (iterations + 1))
+    p_value = float((reached + 1) / (iterations + 1))
 
     return BootstrapResult(observed, float(low), float(high), p_value, iterations)
 

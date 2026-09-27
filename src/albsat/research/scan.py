@@ -150,6 +150,8 @@ class ScanResult:
     #: Düzeltmenin yapıldığı aile büyüklüğü. 0 ise yalnızca bu bölüm sayıldı;
     #: koşu genelinde düzeltme uygulandığında tüm bölümlerin toplamı yazılır.
     family_tests: int = 0
+    #: ``family_tests`` içinde önceki tarama turlarından gelen deneme sayısı.
+    prior_tests: int = 0
 
     @property
     def effective_tests(self) -> int:
@@ -471,6 +473,67 @@ def _refine_floor_pvalues(
     return refined
 
 
+def refine_for_family(
+    result: ScanResult,
+    *,
+    feature_set: FeatureSet,
+    outcomes: OutcomeTable,
+    family_tests: int,
+) -> ScanResult:
+    """Tabana oturan p-değerlerini **ailenin** eşiğini çözecek kadar yeniden ölçer.
+
+    ``scan`` içindeki çözünürlük turu yinelemeyi bölümün kendi aday sayısına
+    göre seçer (≈550 aday → ≈11.000 yineleme → en küçük p ≈ 0,00009). Kabul
+    kararı ise koşunun tamamı (ve önceki turlar) üzerinden verildiği için eşik
+    çok daha küçüktür (6.372 deneme → 0,0000157). Bölüm eşiğine göre ölçülmüş
+    bir p bu eşiğin altına inemez: gerçekten güçlü tek bir örüntü, ne kadar
+    güçlü olursa olsun reddedilirdi. 22 Eylül 2026 koşusundaki en yakın aday
+    (BTCUSDT 15m, 3 mum, p=0,00009) tam bu tabandaydı.
+
+    Yalnızca kendi yineleme sayısının tabanına oturmuş örüntüler yeniden
+    ölçülür; normal durumda hiçbiri yoktur ve bu adım hiçbir şey yapmaz.
+    """
+    needed = required_iterations(family_tests, result.config.alpha)
+    count = len(outcomes)
+    if count == 0 or not (result.buy_patterns or result.avoid_patterns):
+        return result
+    holdout = ~train_validation_test(count)[0].mask(count)
+
+    def redo(
+        patterns: tuple[PatternResult, ...], values: np.ndarray, direction: str
+    ) -> tuple[PatternResult, ...]:
+        out: list[PatternResult] = []
+        for item in patterns:
+            floor = p_value_floor(item.bootstrap.iterations)
+            at_floor = item.bootstrap.p_value <= floor * (1 + 1e-9)
+            if not at_floor or item.bootstrap.iterations >= needed:
+                out.append(item)
+                continue
+            sample = _inference_sample(
+                item.features,
+                feature_set=feature_set,
+                outcomes=outcomes,
+                values=values,
+                direction=direction,
+                holdout=holdout,
+            )
+            out.append(
+                replace(
+                    item,
+                    bootstrap=bootstrap_mean(
+                        sample, iterations=needed, seed=result.config.seed
+                    ),
+                )
+            )
+        return tuple(out)
+
+    return replace(
+        result,
+        buy_patterns=redo(result.buy_patterns, outcomes.net_pct, "al"),
+        avoid_patterns=redo(result.avoid_patterns, outcomes.forward_pct, "kaçın"),
+    )
+
+
 def _apply_correction(
     results: list[PatternResult], *, total_tests: int, alpha: float
 ) -> tuple[PatternResult, ...]:
@@ -490,7 +553,7 @@ def _apply_correction(
 
 
 def apply_global_correction(
-    results: Sequence[ScanResult], *, alpha: float | None = None
+    results: Sequence[ScanResult], *, alpha: float | None = None, prior_tests: int = 0
 ) -> list[ScanResult]:
     """Koşunun tamamını **tek bir aile** sayarak düzeltmeyi yeniden uygular.
 
@@ -504,20 +567,30 @@ def apply_global_correction(
     Bu yüzden kabul kararı, tüm bölümlerin p-değerleri havuzlanarak ve deneme
     sayısı tüm bölümlerin adayları toplanarak veriliyor. Tek bölümlük bir
     koşuda sonuç değişmez.
+
+    Aynı mantık turlar arasında da geçerli: taramayı yeni veriyle yeniden
+    çalıştırmak, aynı soruyu bir kez daha sormaktır. ``prior_tests`` önceki
+    turlarda denenen aday sayısıdır ve aileye eklenir. O turların p-değerleri
+    sıralamaya katılmaz; bu, onları hiç küçük p üretmemiş saymak demektir ve
+    kararı yalnızca sertleştirir.
     """
+    if prior_tests < 0:
+        raise ValueError("önceki tur deneme sayısı negatif olamaz")
     items = list(results)
     if not items:
         return []
 
     alpha = items[0].config.alpha if alpha is None else alpha
-    total = sum(item.candidates for item in items)
+    total = sum(item.candidates for item in items) + int(prior_tests)
 
     flat: list[PatternResult] = []
     for item in items:
         flat.extend(item.buy_patterns)
         flat.extend(item.avoid_patterns)
     if not flat:
-        return [replace(item, family_tests=total) for item in items]
+        return [
+            replace(item, family_tests=total, prior_tests=int(prior_tests)) for item in items
+        ]
 
     p_values = np.array([pattern.bootstrap.p_value for pattern in flat], dtype=float)
     accepted, q_values = benjamini_hochberg(p_values, alpha, total_tests=total)
@@ -542,6 +615,7 @@ def apply_global_correction(
             buy_patterns=redo(item.buy_patterns),
             avoid_patterns=redo(item.avoid_patterns),
             family_tests=total,
+            prior_tests=int(prior_tests),
         )
         for item in items
     ]

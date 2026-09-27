@@ -197,6 +197,8 @@ def run_summary(ruleset: RuleSet) -> dict[str, Any]:
         "kabul_esigi_p": run.kabul_esigi_p,
         "veri_baslangic_utc": run.veri_baslangic_utc,
         "veri_bitis_utc": run.veri_bitis_utc,
+        "onceki_aday": run.onceki_aday,
+        "duzeltme_denemesi": run.duzeltme_denemesi,
         "kabul_edilen_kural": ruleset.kabul_edilen_sayisi,
         "incelenen_aday": len(ruleset.incelenen_adaylar),
         "maliyet": {

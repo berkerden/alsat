@@ -18,6 +18,7 @@ Risk motoru, kâğıt işlem ve Telegram: [`docs/FAZ4-RISK-KAGIT-TELEGRAM.md`](d
 Demo Mode'da emir yürütme: [`docs/FAZ5-DEMO-EMIR-YURUTME.md`](docs/FAZ5-DEMO-EMIR-YURUTME.md)
 Canlı işlem ve canlıya geçiş kapısı: [`docs/FAZ6-CANLI.md`](docs/FAZ6-CANLI.md)
 Sunucu, gözcü, yedek ve alarm: [`docs/FAZ7-SUNUCU.md`](docs/FAZ7-SUNUCU.md)
+İkinci kural arama turunun ön kaydı: [`docs/TUR2-ONKAYIT.md`](docs/TUR2-ONKAYIT.md)
 Fazlar arası devir notu: [`docs/DEVIR-NOTU.md`](docs/DEVIR-NOTU.md)
 
 ---
@@ -101,6 +102,11 @@ Her fazın sonunda çalışma durur ve onay beklenir (SPEC.md §10).
 Faz 2'nin ölçüm sonucu: bu kapsamda (BTCUSDT + SOLUSDT, 15m + 1h, 2-4 mumluk
 pencereler) çoklu test düzeltmesinden geçen örüntü yok; maliyet tamamen
 kaldırıldığında da yok. Ayrıntı [`docs/FAZ2-SONUC.md`](docs/FAZ2-SONUC.md).
+
+**İkinci kural arama turu** (27 Eylül 2026): aynı arama iki yıllık veriyle bir
+kez, Faz 2'nin 6.372 adayı da sayılarak çalıştırılır. Ne yapılacağı sonuçtan
+önce yazıldı: [`docs/TUR2-ONKAYIT.md`](docs/TUR2-ONKAYIT.md). Mac'te, uygulama
+kapalıyken `bash kurulum.sh tur2`.
 
 ---
 

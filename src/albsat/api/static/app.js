@@ -550,6 +550,7 @@
     ozet.appendChild(alanlar([
       ["Kabul edilen kural", String(veri.kosu.kabul_edilen_kural), veri.kosu.kabul_edilen_kural ? "iyi" : null],
       ["Denenen aday", veri.kosu.toplam_aday.toLocaleString("tr-TR")],
+      ["Önceki turlardan sayılan", veri.kosu.onceki_aday ? veri.kosu.onceki_aday.toLocaleString("tr-TR") : null],
       ["Kabul eşiği (p)", veri.kosu.kabul_esigi_p.toExponential(2)],
       ["Yanlış buluş payı", "%" + (veri.kosu.alpha * 100).toFixed(0)],
       ["Koşu zamanı", saat(veri.kosu.kosu_zamani_utc)],
@@ -565,7 +566,11 @@
     if (veri.kabul_edilenler.length === 0) {
       kabul.appendChild(el("p", null,
         "Kabul edilen kural yok. Tarama " + veri.kosu.toplam_aday.toLocaleString("tr-TR") +
-        " aday denedi ve hiçbiri çoklu test düzeltmesinden geçmedi. " +
+        " aday denedi ve hiçbiri çoklu test düzeltmesinden geçmedi" +
+        (veri.kosu.onceki_aday
+          ? " (düzeltmede önceki turlarla birlikte " +
+            veri.kosu.duzeltme_denemesi.toLocaleString("tr-TR") + " deneme sayıldı). "
+          : ". ") +
         "Bu bir arıza değil, ölçülmüş bir sonuçtur."));
     } else {
       veri.kabul_edilenler.forEach(function (k) { kabul.appendChild(kuralCiz(k)); });

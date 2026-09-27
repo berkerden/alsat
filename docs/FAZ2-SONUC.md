@@ -47,6 +47,16 @@ gereken eşiği yazıyor. Eşik koşunun tamamı üzerinden: `0,10 / 6.372 =
 
 En yakın aday bile eşiğin 6 katı uzağında; on bir bölümde 85 ila 4.627 katı.
 
+> **Sonradan eklenen not (27 Eylül 2026).** BTCUSDT 15m 3 mum satırındaki
+> 0,00009, ölçümün çözünürlük tabanıdır (`1/(11.000+1)`): p-değeri bölümün
+> kendi eşiğine göre seçilen yinelemeyle ölçülüyordu, kabul kararı ise koşunun
+> tamamının çok daha küçük eşiğiyle veriliyordu. Bu adayın gerçek p-değeri
+> 0,00009'dan küçük olabilir; "6 katı uzağında" bir üst sınırdır. Aday bir
+> kaçınma örüntüsüdür (3. bölüm), alış kuralı değil; diğer on bir satır
+> tabanın çok üstünde olduğu için etkilenmez. Motor düzeltildi
+> (`scan.refine_for_family`); ikinci tur bu adayı aile eşiğinde ölçüyor
+> (`TUR2-ONKAYIT.md`).
+
 **Asimetri — bulgu değil, testin kendisi.** Raporda "alınacaklar" listesinde
 tek bir bölümde bile düzeltme öncesi dikkat çeken aday yok; "kaçınılacaklar"
 listesinde dokuz bölümde var. Bu, piyasada aşağı yönlü bilgi olup yukarı

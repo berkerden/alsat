@@ -18,7 +18,10 @@ ona sorar. Olası yönler (Berk'in kararı; hiçbiri başlatılmadı):
   ve sunucuda canlı anahtar için ayrı ayrı yazılı onay alınır.
 * **Kural arayışı:** Faz 2'de kabul edilen kural çıkmadı; uygulama bugün
   yalnızca izler ve öneri üretmez. Yeni bir tarama turu çoklu test sorunudur
-  (§5, Faz 2-4 tuzakları); kural uydurulmaz.
+  (§5, Faz 2-4 tuzakları); kural uydurulmaz. **27 Eylül 2026:** Berk ikinci
+  turu istedi (*"evet"*); ön kaydı `docs/TUR2-ONKAYIT.md`, komutu
+  `bash kurulum.sh tur2`. Kural deposu artık birikimli aday sayısını taşıyor
+  ve sonraki taramalar onu kendiliğinden düzeltmeye ekliyor.
 * **Mac'te sınanmayanlar:** Telegram, `caffeinate`/`pmset`, Yarı Otomatik
   önerisi (§7).
 
@@ -42,6 +45,7 @@ Bu not bir sonraki büyük iş bitince aynı sekiz başlıkla baştan yazılır.
   | (boş) | Veriyi tazeler + fizibilite + örüntü taraması |
   | `tarama` | İnternete çıkmaz; yalnızca örüntü taraması |
   | `teshis` | Tarama + maliyetsiz teşhis turu |
+  | `tur2` | İkinci kural arama turu: 730 günlük 15m/1h verisi + Faz 2'nin 6.372 adayı sayılarak tarama; bir kez çalışır (`TUR2-ONKAYIT.md`) |
   | `arayuz` | Kurulumu ve testleri kontrol edip arayüzü açar (canlı fiyat akışıyla) |
   | `telegram` | Telegram botunu kurar (jeton Anahtar Zinciri'ne) |
   | `anahtar` | Salt okuma Binance anahtarı kurar, komisyonu ölçer |

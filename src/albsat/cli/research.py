@@ -30,7 +30,7 @@ from albsat.backtest.benchmarks import buy_and_hold, random_entry_backtest
 from albsat.core.costs import minimum_meaningful_target, round_trip_for
 from albsat.core.fees import Liquidity, flat_table
 from albsat.data.commission import research_rates
-from albsat.data.klines import closed_only, to_utc
+from albsat.data.klines import closed_only, interval_ms, to_utc
 from albsat.data.store import KlineStore
 from albsat.features import FeatureSet, build_features
 from albsat.research import report
@@ -40,6 +40,7 @@ from albsat.research.scan import (
     ScanConfig,
     ScanResult,
     apply_global_correction,
+    refine_for_family,
     scan,
 )
 from albsat.strategy import rules as rulestore
@@ -110,7 +111,68 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Teşhis turu: komisyon, spread, kayma ve maliyet "
                              "eşiği sıfır sayılır. Yalnızca 'yön bilgisi var mı' "
                              "sorusunu ölçer; işlem önerisi üretmez.")
+    parser.add_argument("--gun", type=int, default=None,
+                        help="Yalnızca en yeni mumdan geriye bu kadar günü tara. "
+                             "Veri bu dönemi kapsamıyorsa tarama başlamaz.")
+    parser.add_argument("--onceki-aday", type=int, default=None,
+                        help="Önceki turlarda denenmiş aday sayısı; çoklu test "
+                             "düzeltmesine eklenir. Verilmezse mevcut kural "
+                             "deposundaki birikimli sayı okunur.")
     return parser
+
+
+#: Veri kapsamı denetiminde hoş görülen boşluk: arşiv ay başından başlar,
+#: son mum en fazla birkaç saat gecikebilir.
+COVERAGE_TOLERANCE_MS = 2 * 86_400_000
+#: Pencerede bulunması gereken en az mum oranı. Borsanın bakım kesintileri
+#: birkaç saattir; inmeyen bir aylık arşiv bu oranın çok altına düşürür.
+MIN_COVERAGE_SHARE = 0.98
+
+
+def _prior_from_store(rule_path: Path) -> int:
+    """Mevcut kural deposundan önceki turların birikimli aday sayısı.
+
+    Depo yoksa 0. Faz 2 döneminin depolarında bu alan yoktur ve 0 okunur;
+    o turların sayısı gerekiyorsa ``--onceki-aday`` ile açıkça verilir.
+    Bozuk bir depo sessizce 0 sayılmaz: düzeltmeyi gevşetirdi.
+    """
+    if not rule_path.exists():
+        return 0
+    return rulestore.load(rule_path).kosu.birikimli_aday
+
+
+def _coverage_problems(
+    frames: dict[tuple[str, str], pd.DataFrame], days: int
+) -> tuple[int, list[str]]:
+    """``days`` günlük pencerenin başlangıcı (ms) ve kapsam sorunları.
+
+    Pencere en yeni mumdan geriye sayılır; saat kullanılmaz, böylece aynı veri
+    her zaman aynı pencereyi verir.
+    """
+    newest = max(int(frame["open_time"].max()) for frame in frames.values())
+    cutoff = newest - days * 86_400_000
+    problems: list[str] = []
+    for (symbol, interval), frame in frames.items():
+        first = int(frame["open_time"].min())
+        last = int(frame["open_time"].max())
+        if first > cutoff + COVERAGE_TOLERANCE_MS:
+            problems.append(
+                f"{symbol} {interval}: veri {to_utc(first).date()} tarihinden başlıyor, "
+                f"{days} günlük pencere {to_utc(cutoff).date()} tarihinden başlamalı."
+            )
+        if last < newest - COVERAGE_TOLERANCE_MS:
+            problems.append(
+                f"{symbol} {interval}: son mum {to_utc(last).date()}, diğer seriler "
+                f"{to_utc(newest).date()} tarihine kadar gidiyor."
+            )
+        expected = days * 86_400_000 // interval_ms(interval)
+        present = int((frame["open_time"] >= cutoff).sum())
+        if present < MIN_COVERAGE_SHARE * expected:
+            problems.append(
+                f"{symbol} {interval}: pencerede {present:,} mum var, olması gereken "
+                f"yaklaşık {expected:,}; arada eksik dönem var."
+            )
+    return cutoff, problems
 
 
 @dataclass(frozen=True)
@@ -175,7 +237,6 @@ def main(argv: list[str] | None = None) -> int:
     iterations = 400 if args.hizli else args.yineleme
     detailed = 30 if args.hizli else args.detay
 
-    store = KlineStore(args.veri_dizini)
     commissions = flat_table(args.semboller[0], maker, taker)
     # FAZ0-MIMARI.md Risk #4: hedefe limit emirle, stopa piyasa emriyle
     # çıkılır; iki bacağın maliyeti aynı değildir.
@@ -194,10 +255,59 @@ def main(argv: list[str] | None = None) -> int:
     # Maliyet eşiği maliyetten türer; maliyet yoksa eleme de yoktur.
     eligibility_threshold = None if args.maliyetsiz else threshold
 
+    rule_path = args.kural_dosyasi or rulestore.path_for(args.veri_dizini)
+    if args.onceki_aday is not None:
+        if args.onceki_aday < 0:
+            print("--onceki-aday negatif olamaz.", file=sys.stderr)
+            return 2
+        prior = args.onceki_aday
+    else:
+        try:
+            prior = _prior_from_store(rule_path)
+        except rulestore.RuleStoreError as error:
+            print(
+                f"\nMevcut kural deposu okunamadı: {error}\n"
+                "Önceki turların aday sayısı bilinmeden düzeltme yapılamaz. "
+                "Sayıyı --onceki-aday ile açıkça verin.",
+                file=sys.stderr,
+            )
+            return 2
+
+    store = KlineStore(args.veri_dizini)
+
+    cutoff_ms: int | None = None
+    if args.gun is not None:
+        # BTCUSDT, BTC etkisi ailesinin referansı olduğu için her zaman denetlenir.
+        wanted = {
+            (symbol, interval): closed_only(store.read(symbol, interval))
+            for symbol in dict.fromkeys([*args.semboller, "BTCUSDT"])
+            for interval in args.periyotlar
+        }
+        empty = [f"{s} {i}" for (s, i), frame in wanted.items() if frame.empty]
+        if empty:
+            print(
+                f"\n{args.gun} günlük tarama için veri eksik: {', '.join(empty)}.\n"
+                "Tarama başlamadı. Önce veriyi indirin.",
+                file=sys.stderr,
+            )
+            return 4
+        cutoff_ms, problems = _coverage_problems(wanted, args.gun)
+        if problems:
+            print(
+                f"\nVeri {args.gun} günlük pencereyi kapsamıyor; tarama başlamadı.\n  "
+                + "\n  ".join(problems)
+                + "\nÖnce veriyi indirin. Eksik veriyle yapılan bir tur, "
+                "önceden belirlenen turun yerine sayılamaz.",
+                file=sys.stderr,
+            )
+            return 4
+
     chunks: list[str] = [
         report.header(
             args.semboller, args.periyotlar, threshold.explain(),
             diagnostic=args.maliyetsiz,
+            prior_tests=prior,
+            days=args.gun,
         )
     ]
     print(chunks[0], flush=True)
@@ -211,11 +321,17 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     # BTC etkisi ailesi için referans seriler; BTCUSDT kendisi için eklenmez.
+    def in_window(frame: pd.DataFrame) -> pd.DataFrame:
+        frame = closed_only(frame)
+        if cutoff_ms is not None:
+            frame = frame[frame["open_time"] >= cutoff_ms]
+        return frame.reset_index(drop=True)
+
     context: dict[str, object] = {}
     for interval in args.periyotlar:
         frame = store.read("BTCUSDT", interval)
         if not frame.empty:
-            context[interval] = closed_only(frame).reset_index(drop=True)
+            context[interval] = in_window(frame)
 
     missing = 0
     started = time.monotonic()
@@ -235,7 +351,7 @@ def main(argv: list[str] | None = None) -> int:
                 missing += 1
                 continue
 
-            frame = closed_only(frame).reset_index(drop=True)
+            frame = in_window(frame)
             reference = None if symbol == "BTCUSDT" else context.get(interval)
             print(f"\n{symbol} {interval}: {len(frame):,} kapanmış mum, "
                   "özellikler hesaplanıyor...", flush=True)
@@ -290,9 +406,29 @@ def main(argv: list[str] | None = None) -> int:
     # Koşu genelinde düzeltme. 12 bölümü ayrı ayrı %10 payla düzeltmek,
     # ortada hiçbir şey yokken bile ortalama 1,2 "buluş" üretir.
     if sections:
+        family = sum(item.result.candidates for item in sections) + prior
+        note = f" ve önceki turların {prior:,} adayı" if prior else ""
         print(f"\n{len(sections)} bölüm tarandı; çoklu test düzeltmesi "
-              "koşunun tamamı üzerinden yapılıyor...", flush=True)
-        corrected = apply_global_correction([item.result for item in sections])
+              f"koşunun tamamı{note} üzerinden yapılıyor ({family:,} deneme)...",
+              flush=True)
+        # Bölüm içi çözünürlük turu bölümün eşiğine göre ölçer; kabul kararı
+        # ailenin çok daha küçük eşiğiyle verildiği için tabana oturan
+        # p-değerleri burada ailenin eşiğini çözecek kadar yeniden ölçülür.
+        sections = [
+            replace(
+                section,
+                result=refine_for_family(
+                    section.result,
+                    feature_set=section.feature_set,
+                    outcomes=section.outcomes,
+                    family_tests=family,
+                ),
+            )
+            for section in sections
+        ]
+        corrected = apply_global_correction(
+            [item.result for item in sections], prior_tests=prior
+        )
         sections = [
             replace(section, result=result)
             for section, result in zip(sections, corrected, strict=True)
@@ -357,7 +493,6 @@ def main(argv: list[str] | None = None) -> int:
 
     # Faz 3 köprüsü: kabul kararı kesinleştikten sonra makine okunur kural
     # deposu yazılır. Rapor insan içindir; öneri motoru bu dosyayı okur.
-    rule_path = args.kural_dosyasi or rulestore.path_for(args.veri_dizini)
     if sections:
         first, last = _data_span(sections)
         ruleset = rulestore.build_ruleset(
@@ -376,6 +511,7 @@ def main(argv: list[str] | None = None) -> int:
             pencereler=args.pencereler,
             veri_baslangic_utc=first,
             veri_bitis_utc=last,
+            onceki_aday=prior,
         )
         rulestore.save(ruleset, rule_path)
         print(
