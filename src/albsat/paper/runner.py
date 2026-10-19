@@ -62,6 +62,7 @@ from albsat.notify.base import KIND_CONNECTION, KIND_SIGNAL, KIND_SYSTEM, Notifi
 from albsat.paper.engine import OrderMeta, PaperEngine
 from albsat.paper.fills import Candle
 from albsat.risk.engine import SOURCE_RULE, OrderIntent
+from albsat.strategy import trend_status
 from albsat.strategy.card import SignalCard
 from albsat.strategy.journal import SignalJournal
 from albsat.strategy.rules import Rule, RuleSet, RuleStoreError
@@ -95,6 +96,9 @@ SLEEP_GUARD_SECONDS = 5.0
 #: Açılış uzlaştırması (en fazla 30 günlük 1m mum) bu süreden uzun sürerse
 #: döngü "takıldı" sayılır (Faz 7 gözcüsü).
 STARTUP_GRACE_SECONDS = 900.0
+#: Günlük trend göstergesinin mumları bu sıklıkla denetlenir; yalnızca yeni
+#: kapanmış bir günlük mum eksikse istek gider (günde bir istek).
+TREND_CHECK_SECONDS = 600.0
 
 
 @dataclass
@@ -161,6 +165,7 @@ class LiveRunner:
         self._last_minute_poll = -1
         self._last_heartbeat = 0.0
         self._last_guard = -SLEEP_GUARD_SECONDS
+        self._last_trend_check = -TREND_CHECK_SECONDS
         #: Faz 7 gözcüsü için: döngü ne zaman başladı, son turu ne zamandı (tekdüze saat).
         self._started_mono: float | None = None
         self._loop_mono: float | None = None
@@ -410,6 +415,23 @@ class LiveRunner:
         self.store.upsert(frame, symbol=sembol, interval=periyot)
         return int(len(frame))
 
+    def sync_trend(self) -> int:
+        """Günlük trend göstergesinin (``strategy.trend_status``) mumlarını tamamlar.
+
+        Yeni kapanmış bir günlük mum yoksa istek gönderilmez; varsa tek istek
+        yeter. Hata göstergeyi bayat bırakır, döngüyü durdurmaz.
+        """
+        sembol, periyot = trend_status.SYMBOL, trend_status.INTERVAL
+        step = interval_ms(periyot)
+        last = self.store.last_open_time(sembol, periyot)
+        if last is not None and last + 2 * step > to_ms(self.clock()):
+            return 0
+        try:
+            return self.sync_period(sembol, periyot)
+        except (HttpError, BudgetExceeded, OSError) as error:
+            self.health.son_hata = f"{sembol} {periyot} tamamlama: {error}"[:300]
+            return 0
+
     # --- açılış ------------------------------------------------------------------
 
     def bootstrap(self) -> None:
@@ -450,6 +472,7 @@ class LiveRunner:
                     self.sync_period(sembol, periyot)
                 except (HttpError, BudgetExceeded, OSError) as error:
                     self.health.son_hata = f"{sembol} {periyot} tamamlama: {error}"[:300]
+        self.sync_trend()
         parts = [
             f"{sembol}: {count} mum işlendi" if count >= 0 else f"{sembol}: veri alınamadı"
             for sembol, count in processed.items()
@@ -511,6 +534,10 @@ class LiveRunner:
             if down > FALLBACK_AFTER_SECONDS:
                 self.health.yedek_yoklama = True
                 self._poll(mono, wall)
+
+        if mono - self._last_trend_check >= TREND_CHECK_SECONDS:
+            self._last_trend_check = mono
+            self.sync_trend()
 
         if mono - self._last_guard >= SLEEP_GUARD_SECONDS:
             self._last_guard = mono

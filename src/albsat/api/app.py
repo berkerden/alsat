@@ -47,6 +47,7 @@ from albsat.data.store import KlineStore
 from albsat.strategy import panel as panel_module
 from albsat.strategy import plan as plan_module
 from albsat.strategy import rules as rulestore
+from albsat.strategy import trend_status
 from albsat.strategy import watch as watch_module
 from albsat.strategy import wizard as wizard_module
 from albsat.strategy.card import DISCLAIMER
@@ -452,6 +453,17 @@ def create_app(state: AppState) -> FastAPI:
                 for row in frame.itertuples()
             ],
         }
+
+    # --- günlük trend durumu (docs/TREND-SONUC.md) -----------------------
+
+    @app.get("/api/trend-durumu")
+    def trend_durumu() -> dict[str, Any]:
+        """SOLUSDT 20/10 gün kırılımının bugünkü durumu. Bilgi; emir ya da öneri değil."""
+        frame = KlineStore(state.veri_dizini).read(trend_status.SYMBOL, trend_status.INTERVAL)
+        now_ms = int(datetime.now(UTC).timestamp() * 1000)
+        status = trend_status.evaluate(frame, now_ms=now_ms)
+        runtime = state.runtime
+        return trend_status.to_json(status, live=runtime is not None and runtime.runner is not None)
 
     # --- B eki ---------------------------------------------------------
 

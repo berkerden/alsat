@@ -305,7 +305,7 @@ class FakeHttp:
     def klines(self, *, symbol, interval, start_time=None, end_time=None, limit=1000):
         self.requests.append((symbol, interval))
         self.budget.reserve(2, "/api/v3/klines")
-        step = {"1m": MINUTE, "15m": 15 * MINUTE, "1h": 60 * MINUTE}[interval]
+        step = {"1m": MINUTE, "15m": 15 * MINUTE, "1h": 60 * MINUTE, "1d": 1440 * MINUTE}[interval]
         now_ms = to_ms(self.clock())
         cursor = (start_time // step) * step
         end = min(end_time or now_ms, now_ms)

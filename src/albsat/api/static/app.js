@@ -341,11 +341,84 @@
     if (window.Kagit) window.Kagit.etkin(hangi === "kagit");
     if (window.Demo) window.Demo.etkin(hangi === "demo");
     if (window.Canli) window.Canli.etkin(hangi === "canli");
-    if (hangi === "oneriler") { onerileriYukle(); grafikYukle(); }
+    if (hangi === "oneriler") { trendDurumuYukle(); onerileriYukle(); grafikYukle(); }
     if (hangi === "sihirbaz") sihirbazYukle();
     if (hangi === "kutuphane") kutuphaneYukle();
     if (hangi === "ek") izlemeYukle();
     if (hangi === "gunluk") gunlukYukle();
+  }
+
+  // --- günlük trend durumu (docs/TREND-SONUC.md) ----------------------
+  //
+  // Günlük trend testinde geçen tek kural: SOLUSDT, 20/10 gün kırılımı.
+  // Yalnızca bilgi: emir göndermez, öneri kartı değildir. Seçili coinden
+  // bağımsız olarak hep SOLUSDT'yi gösterir.
+
+  function gun(iso) {
+    if (!iso) return null;
+    const t = new Date(iso + "T00:00:00Z");
+    if (isNaN(t.getTime())) return iso;
+    return t.toLocaleDateString("tr-TR", {
+      timeZone: "UTC", day: "numeric", month: "long", year: "numeric",
+    });
+  }
+
+  async function trendDurumuYukle() {
+    let veri;
+    try {
+      veri = await getir("/api/trend-durumu");
+    } catch (hata) {
+      yaz("trend-durumu", hataKutusu(hata));
+      return;
+    }
+    const k = kutu(null, "kutu-bilgi trend-kutu");
+    const bas = el("div", "trend-baslik");
+    bas.appendChild(el("h2", null, "Günlük trend durumu: " + veri.sembol + ", " + veri.kural_ad));
+    if (veri.durum) {
+      bas.appendChild(el("span",
+        "rozet " + (veri.durum === "elde_tut" ? "rozet-iyi" : "rozet-notr"), veri.durum_tr));
+    }
+    k.appendChild(bas);
+
+    if (veri.sorun) {
+      k.appendChild(el("p", null, veri.sorun));
+    } else {
+      if (veri.bayat) {
+        k.appendChild(el("p", "kart-etiket sari",
+          "Günlük veri güncel değil: son kapanmış mum " + gun(veri.son_gun) + ". " +
+          (veri.canli
+            ? "Uygulama internete bağlıyken eksik gün en geç 10 dakika içinde tamamlanır."
+            : "Uygulama çevrimdışı açıldı; güncel durum için internete bağlıyken açın.")));
+      }
+      k.appendChild(alanlar([
+        ["Son günlük kapanış", gun(veri.son_gun) + " · " + veri.son_kapanis],
+        ["Bu durumda olduğu gün", gun(veri.degisim_gunu)],
+        [veri.durum === "elde_tut" ? "Satış eşiği" : "Alım eşiği", veri.esik],
+      ]));
+      k.appendChild(el("p", "kart-etiket", veri.esik_tr +
+        ". Karar her gün 03:00'te (İstanbul saati) günlük mum kapanınca verilir."));
+
+      const s = veri.sinamadan_sonra;
+      if (s) {
+        k.appendChild(el("h3", null,
+          "Sınamadan sonra (" + veri.sinama_tarihi + "'dan beri, " + s.gun + " gün)"));
+        k.appendChild(alanlar([
+          ["Kural", yuzde(s.kural_yuzde, 2), isaret(s.kural_yuzde)],
+          ["Al-ve-tut", yuzde(s.al_ve_tut_yuzde, 2), isaret(s.al_ve_tut_yuzde)],
+          ["Durum değişimi", String(s.degisim)],
+        ]));
+        k.appendChild(el("p", "kart-etiket",
+          "Sınamanın hiç görmediği günler; maliyet sınamadakiyle aynı. Kuralın gerçekten " +
+          "işe yarayıp yaramadığını en dürüst bu bölüm gösterir. Kısa dönemde iki yöne " +
+          "de büyük fark normaldir."));
+      } else {
+        k.appendChild(el("p", "kart-etiket",
+          "Sınamadan (" + veri.sinama_tarihi + ") bu yana yeni günlük mum yok."));
+      }
+    }
+    k.appendChild(el("p", "kart-etiket", "Kural: " + veri.kural_tanim));
+    k.appendChild(el("p", "kart-etiket", veri.not));
+    yaz("trend-durumu", k);
   }
 
   // --- öneriler ------------------------------------------------------

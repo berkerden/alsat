@@ -108,7 +108,25 @@ günün en düşük kapanışının altına inince sat.
 * Bu on sınama giriş sinyali ailesinin birikimli sayısına (12.021) eklenmez;
   kural deposuna (`veri/kurallar.json`) dokunulmadı.
 
-## 7. Bekleyen karar
+## 7. Berk'in kararı: bilgi göstergesi
 
-Berk'in kararı: SOLUSDT için 20/10 trend durumu göstergesi arayüze eklensin
-mi. Karar verilene kadar arayüzde bir şey değişmez.
+Berk 19 Ekim 2026'da karar kartında "Göstergeyi ekle"yi seçti. Gösterge
+**Öneriler** sekmesinin en üstünde duruyor:
+
+* Bugünkü durum ("Elde tut" ya da "Nakitte bekle"), son günlük kapanış, bu
+  durumun başladığı gün ve durumu değiştirecek eşik (nakitteyken alım eşiği,
+  eldeyken satış eşiği).
+* **Sınamadan sonrası:** 2026-10-18'den sonraki her gün kural için yeni
+  veridir. Gösterge bu dönemde kuralın ve al-ve-tut'un sonucunu sınamadaki
+  maliyetle (%0,14 her yönde) ayrıca yazar. Kuralın gerçekten işe yarayıp
+  yaramadığını en dürüst bu dönem gösterir.
+* Kural sınamadaki kodun kendisidir (`research/trend.py`); gösterge
+  `strategy/trend_status.py`, uç `/api/trend-durumu`.
+* Veri `veri/klines/SOLUSDT/1d`. Uygulama açık ve çevrimiçiyken canlı döngü
+  her 10 dakikada bir bakar, yalnızca yeni kapanmış günlük mum eksikse tek
+  istekle ekler (günde bir istek; `LiveRunner.sync_trend`). Günlük mum UTC
+  gece yarısı, yani İstanbul saatiyle 03:00'te kapanır. Son kapanış iki
+  günden eskiyse kutu "güncel değil" uyarısı verir.
+* **Emir göndermez,** öneri kartı üretmez, kâğıt işleme, sinyal günlüğüne ve
+  kural deposuna bağlı değildir. Kâğıt işlem ya da canlı kullanım yine ayrı
+  karar ve Berk'in ayrı onayıdır (§6).

@@ -25,7 +25,7 @@ ona sorar. Olası yönler (Berk'in kararı; hiçbiri başlatılmadı):
   (`docs/TUR2-SONUC.md`). Ön kayda göre aynı arama yeniden önerilmez. Kural
   deposu birikimli aday sayısını (12.021) taşıyor; sonraki her tarama onu
   kendiliğinden düzeltmeye ekliyor.
-* **Günlük trend testi (çalıştı, 19 Ekim 2026; gösterge kararı Berk'te):** Berk
+* **Günlük trend testi (çalıştı, 19 Ekim 2026; SOL göstergesi eklendi):** Berk
   "işe yarar bir şeyler bulmak için ne önerirsin" sorusundan sonra karar
   kartında "Günlük trend testi"ni seçti (28 Eylül 2026). Beş klasik kural,
   günlük grafik, BTC ve SOL, al-ve-tut kıyası, bir kez
@@ -38,9 +38,13 @@ ona sorar. Olası yönler (Berk'in kararı; hiçbiri başlatılmadı):
   kısmından kaçmak; veri kısa, sonuç "Belirsiz" çıkabilir.
   **Sonuç (`docs/TREND-SONUC.md`):** on sınamadan biri geçti, SOLUSDT'de
   20/10 gün kırılımı (q = 0,094, kontrol 6/10); kıl payı ve kısa dönem.
-  Ön kayıt §8: parayla hemen kullanılmaz; Berk isterse arayüzde yalnızca
-  SOL için bilgi göstergesi. Kâğıt işlem ve canlı ayrı onay ister. Aynı soru
-  başka ayarla yeniden sorulmaz.
+  Ön kayıt §8: parayla hemen kullanılmaz. Kâğıt işlem ve canlı ayrı onay
+  ister. Aynı soru başka ayarla yeniden sorulmaz.
+  **Gösterge (19 Ekim 2026, Berk "Göstergeyi ekle"yi seçti):** Öneriler
+  sekmesinin en üstünde SOL 20/10 durumu, eşik ve sınamadan sonraki sonuç
+  (`strategy/trend_status.py`, `/api/trend-durumu`). Günlük mumu canlı döngü
+  günde bir istekle ekler (`LiveRunner.sync_trend`). Emir göndermez; ayrıntı
+  `docs/TREND-SONUC.md` §7.
 * **Mac'te sınanmayanlar:** Telegram, `caffeinate`/`pmset`, Yarı Otomatik
   önerisi (§7).
 

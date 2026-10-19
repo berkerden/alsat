@@ -119,8 +119,10 @@ kesişimi, 55/20 ve 20/10 gün kırılımı, 12 aylık momentum) al-ve-tut ile b
 kez kıyaslandı; aynı kurallar 2018'in on büyük coininde kontrol olarak
 ölçüldü. **On sınamadan biri geçti: SOLUSDT'de 20/10 gün kırılımı** (q =
 0,094, kontrol 6/10); yedisi belirsiz, ikisi geçmedi. Ön kayda göre geçen
-kural parayla hemen kullanılmaz; Berk isterse arayüzde yalnızca bilgi
-göstergesi olur. Ön kayıt [`docs/TREND-ONKAYIT.md`](docs/TREND-ONKAYIT.md),
+kural parayla hemen kullanılmaz. Berk'in isteğiyle **Öneriler** sekmesinin
+en üstünde SOL için günlük bir "trend durumu" kutusu var: bugün "elde tut" mu
+"nakitte bekle" mi, durumu değiştirecek eşik ve sınamadan sonra kuralın
+al-ve-tut'a göre nasıl gittiği. Yalnızca bilgidir, emir göndermez. Ön kayıt [`docs/TREND-ONKAYIT.md`](docs/TREND-ONKAYIT.md),
 sonuç [`docs/TREND-SONUC.md`](docs/TREND-SONUC.md). Sınama bir kez çalışır;
 `bash kurulum.sh trend` rapor varsa yeniden çalışmaz.
 
