@@ -7,7 +7,8 @@ sözü: *"4-5 klasik kuralı günlük grafikte bir kez sınarım. Kodu ben yazar
 sen Mac'te bir kez çalıştırırsın."*
 **Çalıştırma:** Berk'in Mac'inde
 `cd ~/Desktop/alsat && git pull && bash kurulum.sh trend`
-**Sonuç:** henüz yok.
+**Sonuç (19 Ekim 2026):** on sınamadan biri geçti, SOLUSDT'de 20/10 gün
+kırılımı (q = 0,094; kontrol 6/10). Ayrıntı `TREND-SONUC.md`.
 
 Bu belge sınama çalıştırılmadan **önce** yazıldı ve depoya gönderildi.
 Sınama burada yazılanla birebir çalıştırılır. Sonuç görüldükten sonra hiçbir

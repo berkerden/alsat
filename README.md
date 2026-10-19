@@ -21,6 +21,7 @@ Sunucu, gözcü, yedek ve alarm: [`docs/FAZ7-SUNUCU.md`](docs/FAZ7-SUNUCU.md)
 İkinci kural arama turunun ön kaydı: [`docs/TUR2-ONKAYIT.md`](docs/TUR2-ONKAYIT.md)
 İkinci kural arama turunun sonucu: [`docs/TUR2-SONUC.md`](docs/TUR2-SONUC.md)
 Günlük trend testinin ön kaydı: [`docs/TREND-ONKAYIT.md`](docs/TREND-ONKAYIT.md)
+Günlük trend testinin sonucu: [`docs/TREND-SONUC.md`](docs/TREND-SONUC.md)
 Fazlar arası devir notu: [`docs/DEVIR-NOTU.md`](docs/DEVIR-NOTU.md)
 
 ---
@@ -112,13 +113,16 @@ kapsamdaki arama kapandı. Ön kayıt
 [`docs/TUR2-ONKAYIT.md`](docs/TUR2-ONKAYIT.md), sonuç
 [`docs/TUR2-SONUC.md`](docs/TUR2-SONUC.md).
 
-**Günlük trend testi** (hazır, henüz çalıştırılmadı): BTCUSDT ve SOLUSDT'nin
+**Günlük trend testi** (19 Ekim 2026'da çalıştı): BTCUSDT ve SOLUSDT'nin
 günlük grafiğinde beş klasik trend takibi kuralı (200 günlük ortalama, 50/200
 kesişimi, 55/20 ve 20/10 gün kırılımı, 12 aylık momentum) al-ve-tut ile bir
-kez kıyaslanır. Aynı kurallar 2018'in on büyük coininde de kontrol olarak
-ölçülür. Beklenti al-ve-tut'u geçmek değil, büyük düşüşlerin bir kısmından
-kaçmak. Ön kayıt [`docs/TREND-ONKAYIT.md`](docs/TREND-ONKAYIT.md);
-çalıştırmak için `bash kurulum.sh trend`.
+kez kıyaslandı; aynı kurallar 2018'in on büyük coininde kontrol olarak
+ölçüldü. **On sınamadan biri geçti: SOLUSDT'de 20/10 gün kırılımı** (q =
+0,094, kontrol 6/10); yedisi belirsiz, ikisi geçmedi. Ön kayda göre geçen
+kural parayla hemen kullanılmaz; Berk isterse arayüzde yalnızca bilgi
+göstergesi olur. Ön kayıt [`docs/TREND-ONKAYIT.md`](docs/TREND-ONKAYIT.md),
+sonuç [`docs/TREND-SONUC.md`](docs/TREND-SONUC.md). Sınama bir kez çalışır;
+`bash kurulum.sh trend` rapor varsa yeniden çalışmaz.
 
 ---
 

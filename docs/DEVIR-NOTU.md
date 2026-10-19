@@ -25,7 +25,7 @@ ona sorar. Olası yönler (Berk'in kararı; hiçbiri başlatılmadı):
   (`docs/TUR2-SONUC.md`). Ön kayda göre aynı arama yeniden önerilmez. Kural
   deposu birikimli aday sayısını (12.021) taşıyor; sonraki her tarama onu
   kendiliğinden düzeltmeye ekliyor.
-* **Günlük trend testi (yazıldı, Berk'in çalıştırması bekleniyor):** Berk
+* **Günlük trend testi (çalıştı, 19 Ekim 2026; gösterge kararı Berk'te):** Berk
   "işe yarar bir şeyler bulmak için ne önerirsin" sorusundan sonra karar
   kartında "Günlük trend testi"ni seçti (28 Eylül 2026). Beş klasik kural,
   günlük grafik, BTC ve SOL, al-ve-tut kıyası, bir kez
@@ -36,6 +36,11 @@ ona sorar. Olası yönler (Berk'in kararı; hiçbiri başlatılmadı):
   doğrular ya da "Belirsiz"e düşürür.
   Berk'e söylenen: beklenti al-ve-tut'u geçmek değil büyük düşüşlerin bir
   kısmından kaçmak; veri kısa, sonuç "Belirsiz" çıkabilir.
+  **Sonuç (`docs/TREND-SONUC.md`):** on sınamadan biri geçti, SOLUSDT'de
+  20/10 gün kırılımı (q = 0,094, kontrol 6/10); kıl payı ve kısa dönem.
+  Ön kayıt §8: parayla hemen kullanılmaz; Berk isterse arayüzde yalnızca
+  SOL için bilgi göstergesi. Kâğıt işlem ve canlı ayrı onay ister. Aynı soru
+  başka ayarla yeniden sorulmaz.
 * **Mac'te sınanmayanlar:** Telegram, `caffeinate`/`pmset`, Yarı Otomatik
   önerisi (§7).
 
