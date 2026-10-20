@@ -215,10 +215,17 @@ akış yeniden bağlanır ve aynı uzlaştırma yapılır.
 ### 5.3 Uyku engeli (`core/awake.py`)
 
 Şartname §6: "Otomatik mod açıkken uyku engellensin." Kâğıt işlemde en az bir
-coin varken macOS'un kendi aracı `caffeinate -i -w <pid>` çalışır; Mac boşta
-kaldı diye uyumaz. `-w` sayesinde uygulama kapanınca caffeinate de kapanır.
-Kapak kapanınca Mac yine uyur; bunu hiçbir kullanıcı aracı engelleyemez. Mac
-pille çalışıyorsa arayüz bunu sarı yazıyla uyarır.
+coin varken (Faz 5'ten beri borsada Demo ya da canlı açık pozisyon varken de)
+macOS'un kendi aracı `caffeinate -i -w <pid>` çalışır; Mac boşta kaldı diye
+uyumaz. `-w` sayesinde uygulama kapanınca caffeinate de kapanır. Kapak kapanınca
+Mac yine uyur; bunu hiçbir kullanıcı aracı engelleyemez. Mac pille çalışıyorsa
+arayüz bunu sarı yazıyla uyarır.
+
+`bash kurulum.sh uyku-sina` (`cli/uyku.py`, Ekim 2026) aynı kodu Mac'te
+çalıştırıp sonucu macOS'a sorar (`pmset -g assertions`): engel açılınca kayıt
+görünmeli, kapanınca silinmeli; uygulamanın yerine geçen geçici bir süreç zorla
+kapatılınca caffeinate de kapanmalı. Güç kaynağını ve Mac'in uyku ayarını da
+yazar. Mac'i uyutmaz, ayar değiştirmez.
 
 ### 5.4 Hesap dönemleri
 
@@ -366,6 +373,18 @@ Bildirim türleri: sinyal, emir açıldı/doldu/kapandı/iptal, risk limiti aş�
 limit değişti, bağlantı koptu/uyku, açılış/kapanış. Mesajlar aynı sohbete en
 fazla ~1 saniyede bir gider; 429 gelirse Telegram'ın söylediği kadar beklenir.
 Jeton adresin içinde olduğu için hiçbir hata mesajına adres yazılmaz.
+
+**Ağ yokken üretilen bildirim (Ekim 2026).** Mac uykudan uyanınca "💤 uykudaydı"
+bildirimi Wi-Fi bağlanmadan üretilir. Önceden tek denemede "gönderilemedi"
+sayılıyordu; artık ağ hatası ve Telegram'ın 5xx arızası 2 saniyeden başlayıp
+30 saniyeye çıkan aralıklarla en fazla 10 dakika yeniden denenir. "Sohbet yok",
+"jeton geçersiz" gibi kesin hatalar yeniden denenmez. Uygulama kapanırken
+bekleyen deneme beklenmez.
+
+**Eski komutlar.** Açılışta, uygulama kapalıyken yazılmış komutlar atlanır.
+Açılışta ağ yoksa atlama ağ gelene kadar ertelenir ve o zamana kadar hiçbir
+komut işlenmez; önceden bu durumda eski bir `/durdur kapat` ağ gelince
+çalışabilirdi.
 
 Komutlar: `/durum`, `/durdur`, `/durdur kapat`, `/onayla` (Faz 6'da açılacak),
 `/yardim`. Komutlara **yalnızca kurulumda kaydedilen sohbetten** yanıt verilir;

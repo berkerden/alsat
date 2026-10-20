@@ -141,7 +141,10 @@ fi
 # (yalnızca 127.0.0.1; kâğıt işlem yereldir, Demo işlem yalnızca Binance Demo
 # Mode'a gider; canlı hesaba yalnızca Canlı işlem sekmesinde Yarı/Tam Otomatik'e
 # elle alınmış coinler için emir gider).
-# "bash kurulum.sh telegram" Telegram bildirimlerini kurar.
+# "bash kurulum.sh telegram" Telegram bildirimlerini kurar; "telegram-dene"
+# kurulu bota deneme mesajı gönderir.
+# "bash kurulum.sh uyku-sina" Mac'in uyku engelini (caffeinate) sınar: engel
+# macOS'a kaydoluyor mu, kapanınca ve uygulama aniden kapanınca kalkıyor mu.
 # "bash kurulum.sh anahtar" yalnızca okuma izinli Binance API anahtarını kurar
 # ve hesaba özel komisyonu ölçer; "komisyon" yalnızca yeniden ölçer.
 # "bash kurulum.sh demo-anahtar" Binance Demo Mode (sahte para) anahtarını kurar;
@@ -175,12 +178,12 @@ case "${1:-}" in
   tur2) TUR2=1 ;;
   trend) TREND=1 ;;
   telegram|anahtar|komisyon|demo-anahtar|demo-sina|canli-anahtar|canli-sina) TEK_ADIM="$1" ;;
-  gozcu|gozcu-sina|yedek|geri-yukle) TEK_ADIM="$1" ;;
+  gozcu|gozcu-sina|yedek|geri-yukle|telegram-dene|uyku-sina) TEK_ADIM="$1" ;;
   *)
     hata "Bilinmeyen seçenek: $1"
     printf 'Kullanılabilecekler: tarama, teshis, tur2, trend, arayuz, telegram, anahtar, komisyon,\n'
     printf '                     demo-anahtar, demo-sina, canli-anahtar, canli-sina,\n'
-    printf '                     gozcu, gozcu-sina, yedek, geri-yukle\n'
+    printf '                     gozcu, gozcu-sina, yedek, geri-yukle, telegram-dene, uyku-sina\n'
     printf 'Seçeneksiz çalıştırmak için:  bash kurulum.sh\n'
     exit 1
     ;;
@@ -303,6 +306,18 @@ if [ "$TEK_ADIM" = "telegram" ]; then
   baslik "4/$ADIM_SAYISI  Telegram bildirimleri kuruluyor"
   printf "   Bot jetonu Mac'inizin Anahtar Zinciri'ne yazılır; dosyaya yazılmaz.\n\n"
   python -m albsat.cli.telegram
+  exit $?
+fi
+
+if [ "$TEK_ADIM" = "telegram-dene" ]; then
+  baslik "4/$ADIM_SAYISI  Telegram deneme mesajı"
+  python -m albsat.cli.telegram --dene
+  exit $?
+fi
+
+if [ "$TEK_ADIM" = "uyku-sina" ]; then
+  baslik "4/$ADIM_SAYISI  Uyku engeli sınaması"
+  python -m albsat.cli.uyku
   exit $?
 fi
 

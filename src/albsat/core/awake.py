@@ -3,7 +3,8 @@
 Şartname: "Otomatik mod açıkken uyku engellensin (``caffeinate`` veya
 eşdeğeri). Pilde çalışıyorsa, kapak kapanırsa veya uyku riski varsa uyarı
 versin." Kâğıt İşlem modu da kural sinyal verince kendiliğinden emir açar;
-Mac uyursa o sürede gelen sinyaller kaçar.
+Mac uyursa o sürede gelen sinyaller kaçar. Borsada (Demo ya da canlı) açık
+pozisyon varken de engellenir: koruma emirleri izlenmeli.
 
 ``caffeinate -i -w <pid>`` macOS'un kendi aracıdır: boşta kalma uykusunu
 engeller ve ``-w`` sayesinde bu uygulama kapanınca kendisi de kapanır;
@@ -12,12 +13,17 @@ hiçbir kullanıcı aracı engelleyemez; bu yüzden pilde çalışırken uyarı
 gösterilir. Uyanınca kaçırılan mumlar ``paper.runner`` tarafından işlenir.
 
 macOS dışında (testler, ileride VPS) hiçbir şey yapmaz ve bunu söyler.
+
+``pmset -g assertions`` çıktısını okuyan iki yardımcı (``caffeinate_holds``,
+``sleep_minutes``) Mac'teki sınama komutu (``albsat.cli.uyku``) içindir:
+engelin gerçekten macOS'a kaydolduğunu oradan doğrular.
 """
 
 from __future__ import annotations
 
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -77,6 +83,23 @@ def on_battery(text: str) -> bool | None:
     return None
 
 
+def caffeinate_holds(text: str, process_id: int) -> bool:
+    """``pmset -g assertions`` çıktısında bu caffeinate sürecinin boşta kalma
+    uykusunu engelleyen kaydı var mı? Satır örneği::
+
+        pid 812(caffeinate): [0x0000...] 00:00:03 PreventUserIdleSystemSleep named: ...
+    """
+    pattern = re.compile(rf"^\s*pid {process_id}\([^)]*\):.*PreventUserIdleSystemSleep",
+                         re.MULTILINE)
+    return pattern.search(text) is not None
+
+
+def sleep_minutes(text: str) -> int | None:
+    """``pmset -g`` çıktısındaki boşta kalma uykusu süresi (dakika; 0 = hiç uyumaz)."""
+    match = re.search(r"^\s*sleep\s+(\d+)", text, re.MULTILINE)
+    return int(match.group(1)) if match else None
+
+
 class SleepGuard:
     def __init__(
         self,
@@ -101,8 +124,14 @@ class SleepGuard:
     def active(self) -> bool:
         return self._process is not None and self._process.poll() is None
 
+    @property
+    def process_id(self) -> int | None:
+        """Çalışan caffeinate sürecinin kimliği; kapalıysa None."""
+        return getattr(self._process, "pid", None) if self.active else None
+
     def want(self, on: bool) -> None:
-        """Kâğıt işlemdeki coin varsa açık, yoksa kapalı tutar; tekrar çağrılabilir."""
+        """Kâğıt işlemde coin ya da borsada açık pozisyon varsa açık, yoksa kapalı
+        tutar; tekrar çağrılabilir."""
         if not self._supported:
             return
         if on and not self.active:
@@ -142,8 +171,10 @@ class SleepGuard:
                                "Uyku engeli yalnızca macOS'ta çalışır (caffeinate).")
         if not self.active:
             return GuardStatus(True, False, None,
-                               "Kâğıt işlemde coin yok; Mac'in uykusuna karışılmıyor.")
-        text = "Kâğıt işlem açık olduğu için Mac'in kendiliğinden uyuması engelleniyor."
+                               "Kâğıt işlemde coin, borsada açık pozisyon yok; Mac'in "
+                               "uykusuna karışılmıyor.")
+        text = ("Kâğıt işlemde coin ya da borsada (Demo, canlı) açık pozisyon olduğu için "
+                "Mac'in kendiliğinden uyuması engelleniyor.")
         if self._battery:
             text += (" Mac pille çalışıyor: kapak kapanırsa yine uyur; uyanınca kaçırılan "
                      "mumlar işlenir ama o sürede yeni sinyal alınmaz.")
@@ -152,4 +183,4 @@ class SleepGuard:
         return GuardStatus(True, True, self._battery, text)
 
 
-__all__ = ["GuardStatus", "SleepGuard", "on_battery"]
+__all__ = ["GuardStatus", "SleepGuard", "caffeinate_holds", "on_battery", "sleep_minutes"]

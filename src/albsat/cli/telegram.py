@@ -172,9 +172,10 @@ def test_message(root: Path) -> int:
 def remove(root: Path) -> int:
     removed = keychain.delete(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT)
     path = TelegramConfig.path(root)
-    if path.exists():
+    existed = path.exists()
+    if existed:
         path.unlink()
-    _say("✓ Telegram kurulumu kaldırıldı." if removed or not path.exists()
+    _say("✓ Telegram kurulumu kaldırıldı." if removed or existed
          else "Kaldırılacak kurulum bulunamadı.")
     _say("  Botu tamamen silmek isterseniz BotFather'a /deletebot yazın.")
     return 0

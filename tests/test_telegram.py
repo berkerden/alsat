@@ -94,10 +94,16 @@ def test_bildirim_gonderilir_ve_listede_gorunur():
     assert notifier.recent()[0].gonderildi is True
 
 
+def _wait_recent(notifier, count=1, seconds=3.0):
+    deadline = time.monotonic() + seconds
+    while len(notifier.recent()) < count and time.monotonic() < deadline:
+        time.sleep(0.01)
+
+
 def test_gonderilemeyen_bildirim_kaybolmaz():
     opener = FakeTelegram([urllib.error.URLError("yok")])
     notifier = TelegramNotifier(TelegramClient(SecretText(TOKEN), opener=opener), 42,
-                                min_interval=0)
+                                min_interval=0, retry_window=0)
     notifier.start()
     notifier.send("önemli", kind="stop")
     deadline = time.monotonic() + 3
@@ -107,6 +113,56 @@ def test_gonderilemeyen_bildirim_kaybolmaz():
     notice = notifier.recent()[0]
     assert notice.metin == "önemli" and notice.gonderildi is False
     assert notifier.status()["gonderilemeyen"] == 1
+
+
+def test_ag_kesintisinde_bildirim_ag_gelince_gider():
+    # Mac uykudan uyanınca Wi-Fi birkaç saniye sonra gelir; "💤 uykudaydı"
+    # bildirimi o arada üretilir ve kaybolmamalı.
+    opener = FakeTelegram([urllib.error.URLError("nodename nor servname provided"),
+                           urllib.error.URLError("Network is unreachable"),
+                           {"ok": True, "result": {}}])
+    notifier = TelegramNotifier(TelegramClient(SecretText(TOKEN), opener=opener), 42,
+                                min_interval=0, first_pause=0.01)
+    notifier.start()
+    notifier.send("💤 uykudaydı", kind="baglanti")
+    _wait_recent(notifier)
+    notifier.stop()
+    assert [method for method, _ in opener.calls] == ["sendMessage"] * 3
+    assert notifier.recent()[0].gonderildi is True
+    status = notifier.status()
+    assert status["gonderilen"] == 1 and status["gonderilemeyen"] == 0
+    # Ağ geri geldi; arayüzde eski hata "son hata" diye kalmaz.
+    assert status["son_hata"] is None
+
+
+def test_kesin_telegram_hatasi_yeniden_denenmez():
+    body = {"ok": False, "error_code": 400, "description": "Bad Request: chat not found"}
+    error = urllib.error.HTTPError("u", 400, "x", {}, io.BytesIO(json.dumps(body).encode()))
+    opener = FakeTelegram([error])
+    notifier = TelegramNotifier(TelegramClient(SecretText(TOKEN), opener=opener), 42,
+                                min_interval=0, first_pause=0.01)
+    notifier.start()
+    notifier.send("x", kind="sistem")
+    _wait_recent(notifier)
+    notifier.stop()
+    assert len(opener.calls) == 1
+    assert notifier.recent()[0].gonderildi is False
+    assert "chat not found" in notifier.status()["son_hata"]
+
+
+def test_kapanirken_yeniden_deneme_beklenmez():
+    opener = FakeTelegram([urllib.error.URLError("yok")] * 5)
+    notifier = TelegramNotifier(TelegramClient(SecretText(TOKEN), opener=opener), 42,
+                                min_interval=0, first_pause=30)
+    notifier.start()
+    notifier.send("x", kind="sistem")
+    deadline = time.monotonic() + 3
+    while not opener.calls and time.monotonic() < deadline:
+        time.sleep(0.01)
+    started = time.monotonic()
+    notifier.stop()
+    assert time.monotonic() - started < 2
+    assert notifier.recent()[0].gonderildi is False
 
 
 def test_bildirimler_arasinda_asgari_bekleme_var():
@@ -179,6 +235,25 @@ def test_acilista_eski_komutlar_atlanir():
     assert commands._offset == 18
     assert opener.calls[0] == ("getUpdates",
                                {"timeout": 0, "allowed_updates": ["message"], "offset": -1})
+
+
+def test_acilista_ag_yoksa_eski_komutlar_ag_gelince_yine_atlanir():
+    # Uygulama kapalıyken yazılmış "/durdur kapat", açılışta ağ yok diye eski
+    # komutlar atlanamadı diye sonradan çalışmamalı.
+    opener = FakeTelegram([
+        urllib.error.URLError("yok"),
+        {"ok": True, "result": [_update(17, 42, "/durdur kapat")]},
+        {"ok": True, "result": [_update(18, 42, "/durum")]},
+    ])
+    seen: list[str] = []
+    commands = TelegramCommands(TelegramClient(SecretText(TOKEN), opener=opener), 42,
+                                lambda command, args: seen.append(command) or "tamam")
+    with pytest.raises(TelegramError):
+        commands.poll_once()
+    commands.poll_once()
+    assert seen == ["/durum"]
+    assert opener.calls[1][1]["offset"] == -1
+    assert opener.calls[2][1]["offset"] == 18
 
 
 def test_ayar_dosyasinda_jeton_yok(tmp_path):

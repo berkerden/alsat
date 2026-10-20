@@ -72,6 +72,8 @@ Bu not bir sonraki büyük iş bitince aynı sekiz başlıkla baştan yazılır.
   | `trend` | Günlük trend testi: BTC ve SOL'un bütün günlük mumları, beş klasik kural, al-ve-tut kıyası; bir kez çalışır (`TREND-ONKAYIT.md`) |
   | `arayuz` | Kurulumu ve testleri kontrol edip arayüzü açar (canlı fiyat akışıyla) |
   | `telegram` | Telegram botunu kurar (jeton Anahtar Zinciri'ne) |
+  | `telegram-dene` | Kurulu bota deneme mesajı gönderir |
+  | `uyku-sina` | Uyku engelini sınar: macOS'a kaydoluyor mu, kapanınca ve uygulama aniden kapanınca kalkıyor mu |
   | `anahtar` | Salt okuma Binance anahtarı kurar, komisyonu ölçer |
   | `komisyon` | Kayıtlı anahtarla komisyonu yeniden ölçer |
   | `demo-anahtar` | Demo Mode anahtarı kurar, hesabı ve Demo komisyonunu okur |

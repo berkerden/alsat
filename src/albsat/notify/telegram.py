@@ -15,6 +15,11 @@ Bot API kuralları (core.telegram.org/bots/api):
 * Aynı sohbete saniyede birden fazla mesaj gönderilmemesi önerilir; 429
   gelirse ``retry_after`` kadar beklenir.
 
+Ağ yokken (Mac uykudan yeni uyanmış, Wi-Fi henüz bağlanmamış) üretilen
+bildirim kaybolmaz: ağ geri gelene kadar en fazla ``RETRY_WINDOW_SECONDS``
+boyunca artan aralıklarla yeniden denenir. Telegram'ın "sohbet yok", "jeton
+geçersiz" gibi kesin hataları yeniden denenmez.
+
 **Adres jetonu içerdiği için** hiçbir hata mesajına adres yazılmaz; bir
 istisnanın metninde jeton geçerse maskelenir.
 
@@ -51,6 +56,10 @@ KEYCHAIN_ACCOUNT = "bot-token"
 CONFIG_FILENAME = "telegram.json"
 MAX_TEXT = 4096
 TOKEN_PATTERN = re.compile(r"^\d{5,15}:[A-Za-z0-9_-]{30,64}$")
+#: Ağ kesintisinde bir bildirim en fazla bu kadar saniye yeniden denenir.
+RETRY_WINDOW_SECONDS = 600.0
+#: Yeniden denemeler arasındaki bekleme 2 saniyeden başlar, en fazla bu kadar olur.
+RETRY_MAX_PAUSE_SECONDS = 30.0
 
 
 class TelegramError(RuntimeError):
@@ -63,6 +72,11 @@ class TelegramError(RuntimeError):
 
 def looks_like_token(value: str) -> bool:
     return bool(TOKEN_PATTERN.match(value.strip()))
+
+
+def is_transient(error: TelegramError) -> bool:
+    """Ağ hatası ya da Telegram'ın kendi arızası (5xx): biraz sonra tekrar denenir."""
+    return error.code is None or error.code >= 500
 
 
 class TelegramClient:
@@ -194,14 +208,19 @@ class TelegramNotifier(MemoryNotifier):
     """
 
     def __init__(self, client: TelegramClient, chat_id: int, *, bot_name: str = "",
-                 min_interval: float = 1.1, capacity: int = 200) -> None:
+                 min_interval: float = 1.1, capacity: int = 200,
+                 retry_window: float = RETRY_WINDOW_SECONDS,
+                 first_pause: float = 2.0) -> None:
         super().__init__(capacity)
         self.client = client
         self.chat_id = chat_id
         self.bot_name = bot_name
         self.min_interval = min_interval
+        self.retry_window = retry_window
+        self.first_pause = first_pause
         self._queue: queue.Queue[tuple[str, str] | None] = queue.Queue(maxsize=500)
         self._thread: threading.Thread | None = None
+        self._stopping = threading.Event()
         self._sent = 0
         self._failed = 0
         self._last_error: str | None = None
@@ -212,6 +231,8 @@ class TelegramNotifier(MemoryNotifier):
         self._thread.start()
 
     def stop(self, timeout: float = 5.0) -> None:
+        # Yeniden denemeyi bekleyen bildirim kapanışı geciktirmesin.
+        self._stopping.set()
         with contextlib.suppress(queue.Full):
             self._queue.put_nowait(None)
         if self._thread is not None:
@@ -238,17 +259,26 @@ class TelegramNotifier(MemoryNotifier):
             self._record(Notice(iso(utc_now()), kind, text, gonderildi=delivered))
 
     def _deliver(self, text: str) -> bool:
-        for attempt in range(2):
+        deadline = time.monotonic() + self.retry_window
+        pause = self.first_pause
+        while True:
             try:
                 self.client.send_message(self.chat_id, text)
-                self._sent += 1
-                return True
             except TelegramError as error:
                 self._last_error = str(error)
-                if error.retry_after and attempt == 0:
-                    time.sleep(min(float(error.retry_after), 60.0))
-                    continue
-                break
+                if error.retry_after:
+                    wait = min(float(error.retry_after), 60.0)
+                elif is_transient(error):
+                    wait, pause = pause, min(pause * 2, RETRY_MAX_PAUSE_SECONDS)
+                else:
+                    break
+                if time.monotonic() + wait > deadline or self._stopping.wait(wait):
+                    break
+                continue
+            self._sent += 1
+            # Ağ geri geldi: eski hata arayüzde "son hata" diye kalmasın.
+            self._last_error = None
+            return True
         self._failed += 1
         return False
 
@@ -281,6 +311,7 @@ class TelegramCommands:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._offset: int | None = None
+        self._backlog_skipped = False
         self.last_error: str | None = None
         self.handled = 0
         self.ignored = 0
@@ -297,6 +328,14 @@ class TelegramCommands:
         updates = self.client.get_updates(-1, timeout=0)
         if updates:
             self._offset = int(updates[-1]["update_id"]) + 1
+        self._backlog_skipped = True
+
+    def poll_once(self) -> None:
+        """Tek yoklama. Eski komutlar atlanmadan hiçbir komut işlenmez: açılışta ağ
+        yoksa, uygulama kapalıyken yazılmış bir "/durdur kapat" ağ gelince çalışmasın."""
+        if not self._backlog_skipped:
+            self.skip_backlog()
+        self.process(self.client.get_updates(self._offset, timeout=25))
 
     def process(self, updates: list[dict[str, Any]]) -> None:
         for update in updates:
@@ -328,20 +367,15 @@ class TelegramCommands:
 
     def _run(self) -> None:
         failures = 0
-        try:
-            self.skip_backlog()
-        except TelegramError as error:
-            self.last_error = str(error)
         while not self._stop.is_set():
             try:
-                updates = self.client.get_updates(self._offset, timeout=25)
+                self.poll_once()
                 failures = 0
+                self.last_error = None
             except TelegramError as error:
                 self.last_error = str(error)
                 failures += 1
                 self._stop.wait(min(60.0, 5.0 * failures))
-                continue
-            self.process(updates)
 
 
 __all__ = [
@@ -353,6 +387,7 @@ __all__ = [
     "TelegramConfig",
     "TelegramError",
     "TelegramNotifier",
+    "is_transient",
     "load_token",
     "looks_like_token",
 ]

@@ -280,7 +280,15 @@ o coinde parasız bir hesapla işlem yapmayı açar. Emirler bu bilgisayardaki
 Telegram bildirimleri için bir kez:
 
 ```bash
-bash kurulum.sh telegram
+bash kurulum.sh telegram        # botu kurar
+bash kurulum.sh telegram-dene   # kurulu bota deneme mesajı gönderir
+```
+
+Kâğıt işlemde coin ya da borsada açık pozisyon varken Mac'in kendiliğinden
+uyuması engellenir (`caffeinate`). Bunun bu Mac'te çalıştığını sınamak için:
+
+```bash
+bash kurulum.sh uyku-sina
 ```
 
 Yöntemin ayrıntısı: [`docs/FAZ4-RISK-KAGIT-TELEGRAM.md`](docs/FAZ4-RISK-KAGIT-TELEGRAM.md)
