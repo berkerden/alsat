@@ -91,7 +91,7 @@ def run(
         return 1
     _say("Uyku engeli sınaması. Mac'i uyutmaz, ayarlarınızı değiştirmez, ağa çıkmaz.\n")
 
-    _say("1/4  Güç kaynağı ve uyku ayarı")
+    _say("1) Güç kaynağı ve uyku ayarı")
     battery = on_battery(pmset("-g", "batt"))
     if battery is True:
         _say("   ✓ Mac pille çalışıyor. Uygulama bunu görüp 'kapak kapanırsa uyur' "
@@ -112,7 +112,7 @@ def run(
 
     stand_in = None
     try:
-        _say("\n2/4  Uyku engeli açılıyor (uygulamanın kullandığı kodla)")
+        _say("\n2) Uyku engeli açılıyor (uygulamanın kullandığı kodla)")
         guard.want(True)
         if not _wait_until(lambda: _holds(pmset, guard.process_id), wait_seconds):
             _say("   ✗ macOS'un kaydında uyku engeli görünmedi.")
@@ -121,7 +121,7 @@ def run(
         _say(f"   ✓ macOS engeli kaydetti: caffeinate (süreç {guard.process_id}) Mac'in "
              "boşta kalınca uyumasını engelliyor.")
 
-        _say("\n3/4  Uyku engeli kapatılıyor")
+        _say("\n3) Uyku engeli kapatılıyor")
         process_id = guard.process_id
         guard.want(False)
         if not _wait_until(lambda: not _holds(pmset, process_id), wait_seconds):
@@ -130,7 +130,7 @@ def run(
             return 1
         _say("   ✓ Kayıt silindi; Mac yine kendi ayarıyla uyuyabilir.")
 
-        _say("\n4/4  Uygulama aniden kapanırsa engel kalkıyor mu?")
+        _say("\n4) Uygulama aniden kapanırsa engel kalkıyor mu?")
         _say("   Uygulamanın yerine geçen geçici bir süreç açılıp zorla kapatılıyor...")
         stand_in = start_stand_in()
         child_guard = make_guard(pid=stand_in.pid)
