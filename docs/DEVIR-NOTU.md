@@ -345,7 +345,8 @@ test sorunudur.**
    stopun altında korumalı çıkış, yeniden koruma, uykudan sonra uzlaştırma,
    429/418) gerçekte görülmedi.
 6. **Açık kalan küçük işler:** gözcünün bilerek kapatmada susması (yönetim
-   API anahtarı ister); Mac kurulumunun kilit dosyasından kurmaması; bot
+   API anahtarı ister); Mac kurulumunun kilit dosyasından kurmaması
+   (`fable-5-2` dalında yapıldı, `main`'de açık; `FABLE-DEVIR.md` §3); bot
    için Binance alt hesabı önerisi (SPEC §5, doğrulanmadı); yedeğin sunucu
    dışına kendiliğinden kopyalanmaması; `claude/faz7-sunucu` uzak dalının
    silinmesi; Mac'te `launchd` (SPEC'te isteğe bağlı, yapılmadı).

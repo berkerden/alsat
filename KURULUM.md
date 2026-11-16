@@ -49,7 +49,7 @@ Betik beş adımı ekrana yazar. Her adımın başında yeşil bir `✓` görmel
 ✓ Sanal ortam hazır (.venv)
 
 3/5  Bağımlılıklar kuruluyor
-✓ Bağımlılıklar kuruldu
+✓ Bağımlılıklar kuruldu (sabit sürümler, özetleri doğrulandı)
 ✓ Testler geçti
 
 4/5  Veri tazeleme ve fizibilite taraması

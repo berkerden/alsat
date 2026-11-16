@@ -247,11 +247,44 @@ tamam "Sanal ortam hazır (.venv)"
 
 baslik "3/$ADIM_SAYISI  Bağımlılıklar kuruluyor (ilk seferde birkaç dakika sürebilir)"
 python -m pip install --quiet --upgrade pip || uyari "pip güncellenemedi, devam ediliyor."
-if ! python -m pip install --quiet -e ".[dev]"; then
-  hata "Bağımlılıklar kurulamadı. İnternet bağlantınızı kontrol edip tekrar deneyin."
-  exit 1
+# Önce sabit sürümler: requirements-dev.lock her paketin sürümünü ve özetini
+# (SHA-256) taşır; sunucu görüntüsü de aynı listeden kurulur. Böylece bir
+# kütüphanenin yeni sürümü uygulamayı kendiliğinden bozamaz ve özeti tutmayan
+# paket kurulmaz. "--only-binary": hazır paketi olmayan bir kütüphane
+# derlenmeye çalışılmasın (dakikalarca sessiz kalır, sonra yine düşer).
+# Liste bu bilgisayara uymuyorsa (ör. hazır paketi olmayan işlemci ya da Python
+# sürümü) eski yola dönülür: en yeni uyumlu sürümler.
+KILIT="requirements-dev.lock"
+KILITLI=0
+if [ -f "$KILIT" ]; then
+  KILIT_LOG="$(mktemp)"
+  if python -m pip install --quiet --require-hashes --only-binary :all: -r "$KILIT" \
+        >"$KILIT_LOG" 2>&1 \
+     && python -m pip install --quiet --no-deps -e . >>"$KILIT_LOG" 2>&1; then
+    KILITLI=1
+  elif grep -q "DO NOT MATCH THE HASHES" "$KILIT_LOG"; then
+    # İndirilen paket listedeki özetle tutmuyor: paket yolda değişmiş olabilir.
+    # Burada eski yola dönmek, denetimin yakaladığı şeyi kurmak olurdu.
+    hata "İndirilen bir paketin özeti beklenenle tutmuyor. Kurulum durduruldu."
+    grep -v '^[[:space:]]*$' "$KILIT_LOG" | tail -12
+    printf '\nHiçbir şey kurulmadı. Yukarıdaki çıktıyı Claude ile paylaşın.\n'
+    rm -f "$KILIT_LOG"
+    exit 1
+  else
+    uyari "Sabit sürümler bu bilgisayara kurulamadı; en yeni uyumlu sürümler kuruluyor."
+    printf '   Sebep: %s\n' "$(grep -v '^[[:space:]]*$' "$KILIT_LOG" | tail -1 | cut -c1-200)"
+  fi
+  rm -f "$KILIT_LOG"
 fi
-tamam "Bağımlılıklar kuruldu"
+if [ "$KILITLI" = "1" ]; then
+  tamam "Bağımlılıklar kuruldu (sabit sürümler, özetleri doğrulandı)"
+else
+  if ! python -m pip install --quiet -e ".[dev]"; then
+    hata "Bağımlılıklar kurulamadı. İnternet bağlantınızı kontrol edip tekrar deneyin."
+    exit 1
+  fi
+  tamam "Bağımlılıklar kuruldu (en yeni uyumlu sürümler; sabit liste kullanılamadı)"
+fi
 
 printf '\n   Testler çalıştırılıyor...\n'
 # Çıktıyı dosyaya al: "| tail" kullanılırsa pipeline'ın çıkış kodu tail'inki

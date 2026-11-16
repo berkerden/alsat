@@ -135,10 +135,23 @@ etme, kural uydurma.
   zamanı + boyut; arayüzün 5 saniyelik yoklaması 26 ms'den 6,5 ms'ye indi),
   sinyal günlüğü `core.db.session` kullanıyor (bağlantılar kapanıyor),
   bütçesiz komut satırı istekleri 429'da `Retry-After` kadar bekliyor (120
-  sn'den uzunsa beklemeden duruyor). 808 test. **Mac'te `main` çalıştığı için
-  bu değişiklikler Berk'in kurulumunda yok.** Berk'e sorulan, cevap bekleyen
-  öneriler: Mac kurulumunun kilit dosyasından yapılması, her gönderimde
-  GitHub'da otomatik test.
+  sn'den uzunsa beklemeden duruyor). 808 test.
+* **Sabit sürümlü kurulum ve otomatik test** (16 Kasım 2026, yalnızca bu
+  dalda; Berk: *"bunları yapmak mantıklı ve efektif ise yap"*):
+  `kurulum.sh` Mac'te bağımlılıkları önce `requirements-dev.lock`'tan
+  özetleriyle kurar (`--require-hashes --only-binary :all:`), sonra paketi
+  `--no-deps -e .` ile ekler. Liste bilgisayara uymazsa (hazır paketi olmayan
+  işlemci ya da Python) uyarıp eski yola (`-e ".[dev]"`) döner; **özet
+  tutmazsa durur**, eski yola dönmez. Liste Apple işlemcili Mac'te Python
+  3.12-3.14 için çözülüyor; Intel Mac'te `cryptography`'nin hazır paketi yok,
+  orada eski yol çalışır (Berk'in Mac'inin işlemcisi bilinmiyor).
+  `.github/workflows/test.yml` her gönderimde (`main`, `fable-5-2`)
+  `kurulum.sh`'yi Linux/3.12 ve macOS/3.14'te baştan çalıştırır; sır
+  kullanmaz. Kilit dosyaları `uv` ile üretilmiş; bağımlılık değişirse ikisi
+  de yeniden üretilmeli, yoksa otomatik test "sabit sürümler" satırını
+  bulamayıp kırmızı olur.
+* **Mac'te `main` çalıştığı için bu dalın hiçbir değişikliği Berk'in
+  kurulumunda yok.** `main`'e alınması ayrı karar.
 
 ## 4. Ölçülmüş sonuçlar ve yeniden açılmayacak sorular
 

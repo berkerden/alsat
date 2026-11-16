@@ -1,0 +1,62 @@
+# Her gönderimde depoyu sıfırdan indirip kurulum betiğini baştan çalıştırır.
+#
+# Neden var: "çalışma dizininde testler geçti" kanıt değildir; bir kez bir
+# kaynak klasörü depoya hiç gitmedi ve kurulum Mac'te patladı. Temiz indirme
+# denemesi elle yapılıyordu, artık her gönderimde kendiliğinden yapılıyor.
+#
+# İki ortam: sunucunun Python'u (Linux, 3.12) ve Mac'teki kurulumun eşi (macOS,
+# 3.14). Çalışan şey kullanıcının çalıştırdığı betiğin kendisidir
+# (kurulum.sh): Python'u bulur, sanal ortamı kurar, bağımlılıkları sabit sürüm
+# listesinden özetleriyle kurar, testleri (gizli bilgi taraması dahil) çalıştırır.
+#
+# Sır kullanmaz, Binance'e bağlanmaz, depoya yazamaz.
+name: Testler
+
+on:
+  push:
+    branches: [main, fable-5-2]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: testler-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  kurulum:
+    name: ${{ matrix.ad }}
+    runs-on: ${{ matrix.isletim }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - ad: Sunucu eşi (Linux, Python 3.12)
+            isletim: ubuntu-latest
+            python: "3.12"
+          - ad: Mac eşi (macOS, Python 3.14)
+            isletim: macos-latest
+            python: "3.14"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      # "yedek" seçeneği soru sormayan tek adımdır: kurulum ve testlerden sonra
+      # yedek almaya çalışır, veritabanı olmadığı için "yedeklenecek kayıt yok"
+      # deyip çıkar. Buradaki kanıt o çıkış kodu değil, aşağıdaki iki satırdır.
+      - name: Kurulum betiğini baştan çalıştır
+        run: |
+          bash kurulum.sh yedek 2>&1 | tee kurulum-ciktisi.txt || true
+
+      - name: Bağımlılıklar sabit sürüm listesinden kuruldu mu
+        run: grep -q "sabit sürümler, özetleri doğrulandı" kurulum-ciktisi.txt
+
+      - name: Testler geçti mi
+        run: grep -q "Testler geçti" kurulum-ciktisi.txt
