@@ -126,6 +126,20 @@ etme, kural uydurma.
   `uyku-sina` ✗ verirse önce `caffeinate_holds` içindeki düzenli ifadeyi
   gerçek çıktıyla karşılaştır.
 
+* **Kod gözden geçirmesi** (16 Kasım 2026, yalnızca bu dalda): Berk "sıfırdan
+  yapsan neyi farklı yapardın" diye sordu. Araştırma, canlı döngü, veri, para
+  ve maliyet hesabı, arayüz sunucusu baştan sona; emir yürütücünün ilk üçte
+  biri okundu. Para ve istatistik yolunda hata bulunmadı. Davranışı
+  değiştirmeyen üç düzeltme yapıldı (`tests/test_iyilestirmeler.py`): mum
+  deposu son okunan dosyaları bellekte tutuyor (anahtar inode + değişim
+  zamanı + boyut; arayüzün 5 saniyelik yoklaması 26 ms'den 6,5 ms'ye indi),
+  sinyal günlüğü `core.db.session` kullanıyor (bağlantılar kapanıyor),
+  bütçesiz komut satırı istekleri 429'da `Retry-After` kadar bekliyor (120
+  sn'den uzunsa beklemeden duruyor). 808 test. **Mac'te `main` çalıştığı için
+  bu değişiklikler Berk'in kurulumunda yok.** Berk'e sorulan, cevap bekleyen
+  öneriler: Mac kurulumunun kilit dosyasından yapılması, her gönderimde
+  GitHub'da otomatik test.
+
 ## 4. Ölçülmüş sonuçlar ve yeniden açılmayacak sorular
 
 * **Küçük ve sık hareket hedefi çürüdü** (Faz 1). Maliyet eşiği %0,28

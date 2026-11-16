@@ -20,6 +20,7 @@ hesaplanır: aynı mumda hem hedefe hem stopa değilirse stop kabul edilir,
 from __future__ import annotations
 
 import sqlite3
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -27,6 +28,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from albsat.core import db
 from albsat.core.costs import RoundTrip
 from albsat.data.klines import closed_only
 from albsat.data.store import KlineStore
@@ -125,10 +127,14 @@ class SignalJournal:
     def in_directory(cls, root: Path | str, filename: str = DEFAULT_FILENAME) -> SignalJournal:
         return cls(Path(root) / filename)
 
-    def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.path)
-        connection.row_factory = sqlite3.Row
-        return connection
+    def _connect(self) -> AbstractContextManager[sqlite3.Connection]:
+        """Tek iş için bağlantı: kaydeder ya da geri alır, sonra **kapatır**.
+
+        ``with sqlite3.connect(...)`` bağlantıyı kapatmaz; canlı döngü ve arayüz
+        bu günlüğü aynı anda kullandığı için uygulamanın geri kalanıyla aynı
+        yardımcıdan (WAL, meşgul bekleme süresi) geçer.
+        """
+        return db.session(self.path)
 
     # --- yazma ---------------------------------------------------------
 

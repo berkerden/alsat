@@ -22,6 +22,10 @@ from albsat.exchange.ratelimit import BudgetExceeded, RequestBudget, parse_retry
 
 USER_AGENT = "albsat/0.1 (+https://github.com/)"
 
+#: Bütçesiz (komut satırı) isteklerde 429'un istediği bekleme bundan uzunsa
+#: beklenmez, hata yükseltilir: kullanıcı donmuş bir ekrana bakmasın.
+MAX_RETRY_AFTER_SECONDS = 120.0
+
 
 class HttpError(RuntimeError):
     def __init__(self, status: int, url: str, body: str) -> None:
@@ -81,7 +85,15 @@ def _request(
                 raise HttpError(429, url, body) from error
             if error.code in (429, 500, 502, 503, 504) and attempt < retries:
                 last = error
-                time.sleep(backoff * (2**attempt))
+                wait = backoff * (2**attempt)
+                if error.code == 429:
+                    # Borsa ne kadar beklenmesini istediğini söyler. Daha erken
+                    # yeniden denemek 429'u 418'e (IP engeli) çevirir.
+                    asked = parse_retry_after(headers)
+                    if asked is not None and asked > MAX_RETRY_AFTER_SECONDS:
+                        raise HttpError(error.code, url, body) from error
+                    wait = max(wait, asked or 0.0)
+                time.sleep(wait)
                 continue
             raise HttpError(error.code, url, body) from error
         except (urllib.error.URLError, TimeoutError) as error:
