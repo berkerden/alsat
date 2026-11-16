@@ -30,9 +30,9 @@ from albsat.core.clock import istanbul_text, parse_utc
 from albsat.core.money import ZERO
 from albsat.paper.fills import EXIT_LABELS_TR
 from albsat.paper.ledger import STATUS_CLOSED, PaperOrder
-from albsat.risk.engine import SOURCE_MANUAL, SOURCE_RULE
+from albsat.risk.engine import SOURCE_MANUAL, SOURCE_RULE, SOURCE_SHOW
 
-SOURCE_LABELS_TR = {SOURCE_RULE: "kural", SOURCE_MANUAL: "elle"}
+SOURCE_LABELS_TR = {SOURCE_RULE: "kural", SOURCE_MANUAL: "elle", SOURCE_SHOW: "gösteri"}
 
 #: Canlıya geçiş kapısı (SPEC §4.7): kâğıtta en az bu kadar gün ve işlem.
 GATE_MIN_DAYS = 7

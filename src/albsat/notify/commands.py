@@ -72,7 +72,8 @@ def status_text(engine: PaperEngine, *, marks: dict[str, Decimal],
             lines.append(f"Bekleyen giriş: {order.sembol} {order.miktar} @ {order.giris}")
     period_id, _, _ = engine.period()
     orders = engine.ledger.in_period(period_id)
-    for kaynak, label in ((risk.SOURCE_RULE, "Kural"), (risk.SOURCE_MANUAL, "Elle")):
+    for kaynak, label in ((risk.SOURCE_RULE, "Kural"), (risk.SOURCE_MANUAL, "Elle"),
+                          (risk.SOURCE_SHOW, "Gösteri botu")):
         summary = summarize(orders, kaynak)
         if summary.islem:
             lines.append(

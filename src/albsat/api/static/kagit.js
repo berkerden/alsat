@@ -232,7 +232,31 @@
     if (v.demo_hazir_degil) {
       k.appendChild(el("p", "kart-etiket", "Demo Mode şu an seçilemiyor: " + v.demo_hazir_degil));
     }
+    if (v.gosteri) k.appendChild(gosteriCiz(v.gosteri));
     return k;
+  }
+
+  // Gösteri botu: kural değildir, yalnızca kâğıtta çalışır (docs/GOSTERI-BOTU.md).
+  function gosteriCiz(g) {
+    const kap = el("div", "gosteri-kutu kutu-uyari");
+    kap.appendChild(el("h3", null, "Gösteri botu (kural değil) · " +
+      (g.acik ? "AÇIK" : "kapalı")));
+    kap.appendChild(el("p", "kart-etiket", g.aciklama));
+    kap.appendChild(el("p", "kart-etiket",
+      "Açıkken, Kâğıt İşlem modundaki coinde her yükselişle kapanan " + g.periyot +
+      " mumundan sonra sahte parayla bir alış emri dener; günde birkaç işlem çıkar. " +
+      "Çalışması için coini yukarıdan Kâğıt İşlem'e almanız gerekir."));
+    const dugme = el("button", null, g.acik ? "Gösteri botunu kapat" : "Gösteri botunu aç");
+    dugme.type = "button";
+    dugme.id = "gosteri-dugme";
+    dugme.addEventListener("click", async function () {
+      dugme.disabled = true;
+      await eylem("/api/kagit/gosteri", { acik: !g.acik },
+        g.acik ? "Gösteri botu kapatıldı." : "Gösteri botu açıldı (yalnızca kâğıt).");
+      dugme.disabled = false;
+    });
+    kap.appendChild(dugme);
+    return kap;
   }
 
   function hesapCiz(h) {
@@ -365,7 +389,11 @@
   function sonuclarCiz(v) {
     const k = A.kutu("Sonuçlar (bu hesap dönemi)");
     const iki = el("div", "iki-sutun");
-    [["Kural işlemleri", v.ozet.kural], ["Elle işlemler", v.ozet.elle]].forEach(function (c) {
+    const sutunlar = [["Kural işlemleri", v.ozet.kural], ["Elle işlemler", v.ozet.elle]];
+    if (v.ozet.gosteri && (v.ozet.gosteri.islem || v.gosteri_acik)) {
+      sutunlar.push(["Gösteri botu (kural değil)", v.ozet.gosteri]);
+    }
+    sutunlar.forEach(function (c) {
       const s = el("div");
       s.appendChild(el("h3", null, c[0]));
       s.appendChild(ozetAlanlari(c[1]));
@@ -373,8 +401,9 @@
     });
     k.appendChild(iki);
     k.appendChild(el("p", "kart-etiket",
-      "Kural ve elle işlemler ayrı sayılır: hangisinin ne getirdiği karışmasın. Oranlar " +
-      "bütçeye göre değil, her işlemin kendi tutarına göredir."));
+      "Kural, elle ve gösteri botu işlemleri ayrı sayılır: hangisinin ne getirdiği " +
+      "karışmasın. Gösteri botunun sonucu bir kuralın kanıtı değildir ve canlıya geçiş " +
+      "kapısına girmez. Oranlar bütçeye göre değil, her işlemin kendi tutarına göredir."));
     if (v.performans.length) {
       k.appendChild(el("h3", null, "Kural performansı (beklentiyle kıyas)"));
       k.appendChild(tablo(["Kural", "İşlem", "Beklenen ort.", "Gerçekleşen ort.", "Fark (std. hata)", "Durum"],
@@ -714,14 +743,14 @@
       }, baglantiCiz);
       cizDegistiyse("kagit-modlar", {
         modlar: d.modlar, secilebilir: d.secilebilir_modlar, canli_modlar: d.canli_modlar,
-        canli: d.canli, demo_hazir_degil: d.demo_hazir_degil,
+        canli: d.canli, demo_hazir_degil: d.demo_hazir_degil, gosteri: d.gosteri,
       }, modlarCiz);
       cizDegistiyse("kagit-hesap", d.hesap, hesapCiz);
       cizDegistiyse("kagit-risk", { risk: d.risk, durdurulan: d.durdurulan_kurallar }, riskCiz);
       cizDegistiyse("kagit-aktif", d.aktif, aktifCiz);
       cizDegistiyse("kagit-sonuclar", {
         ozet: d.ozet, performans: d.kural_performansi, canliya_gecis: d.canliya_gecis,
-        maliyet: d.maliyet,
+        maliyet: d.maliyet, gosteri_acik: !!(d.gosteri && d.gosteri.acik),
       }, sonuclarCiz);
       cizDegistiyse("kagit-gecmis", sonuclar[2].islemler, gecmisCiz);
       if (detayAcik("kagit-piyasa-kutu")) cizDegistiyse("kagit-piyasa", p, piyasaCiz);

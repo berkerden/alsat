@@ -22,6 +22,7 @@ Sunucu, gözcü, yedek ve alarm: [`docs/FAZ7-SUNUCU.md`](docs/FAZ7-SUNUCU.md)
 İkinci kural arama turunun sonucu: [`docs/TUR2-SONUC.md`](docs/TUR2-SONUC.md)
 Günlük trend testinin ön kaydı: [`docs/TREND-ONKAYIT.md`](docs/TREND-ONKAYIT.md)
 Günlük trend testinin sonucu: [`docs/TREND-SONUC.md`](docs/TREND-SONUC.md)
+Gösteri botu (kural değil, yalnızca kâğıt; `fable-5-2` dalında): [`docs/GOSTERI-BOTU.md`](docs/GOSTERI-BOTU.md)
 Fazlar arası devir notu: [`docs/DEVIR-NOTU.md`](docs/DEVIR-NOTU.md)
 
 ---

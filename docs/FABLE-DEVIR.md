@@ -150,6 +150,15 @@ etme, kural uydurma.
   kullanmaz. Kilit dosyaları `uv` ile üretilmiş; bağımlılık değişirse ikisi
   de yeniden üretilmeli, yoksa otomatik test "sabit sürümler" satırını
   bulamayıp kırmızı olur.
+* **Gösteri botu** (16 Kasım 2026, yalnızca bu dalda; Berk günde birkaç işlem
+  yapan botu parasız görmek istedi): Kâğıt işlem sekmesinden açılan, yalnızca
+  kâğıtta çalışan, **kural olmayan** bir gösteri (`strategy/gosteri.py`,
+  `LiveRunner.gosteri_step`, `tests/test_gosteri_botu.py`). Ayrı kaynakla
+  (`gosteri`) sayılır, kapıya ve kural performansına girmez, Demo ve canlıya
+  yolu yoktur, ayarı yoktur ve eklenmez. Beklenti zarar; artıda görünmesi
+  kanıt değildir. Ayrıntı ve sınırlar `docs/GOSTERI-BOTU.md`. 823 test.
+  Aynı gün Berk'e getiri ürünleri (Binance Earn vb.) karşılaştırması ayrı bir
+  belge olarak verildi; uygulamayla ilgisi yok.
 * **Mac'te `main` çalıştığı için bu dalın hiçbir değişikliği Berk'in
   kurulumunda yok.** `main`'e alınması ayrı karar.
 

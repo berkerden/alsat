@@ -52,6 +52,9 @@ from albsat.risk.sizing import Binding, PositionSize, size_position
 
 SOURCE_RULE = "kural"
 SOURCE_MANUAL = "elle"
+#: Gösteri botu (``strategy.gosteri``): kural değildir, yalnızca kâğıtta çalışır,
+#: sonuçları kural ve elle işlemlerden ayrı sayılır, canlıya geçiş kapısına girmez.
+SOURCE_SHOW = "gosteri"
 
 #: İşlem sonrası sınır türleri.
 BREACH_DAILY = "gunluk_zarar"
@@ -613,6 +616,7 @@ __all__ = [
     "BREACH_WEEKLY",
     "SOURCE_MANUAL",
     "SOURCE_RULE",
+    "SOURCE_SHOW",
     "AccountSnapshot",
     "Breach",
     "ClosedTrade",

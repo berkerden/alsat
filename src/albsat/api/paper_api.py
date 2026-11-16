@@ -34,7 +34,7 @@ from albsat.modes.state import (
     PAPER_TAB_MODES,
     ModeError,
 )
-from albsat.notify.base import KIND_LIMIT, Notice
+from albsat.notify.base import KIND_LIMIT, KIND_MODE, Notice
 from albsat.paper import report
 from albsat.paper.engine import AccountView, OrderMeta, time_left_text
 from albsat.paper.fills import EXIT_LABELS_TR
@@ -42,6 +42,7 @@ from albsat.paper.ledger import STATUS_OPEN, STATUS_PENDING, PaperOrder
 from albsat.risk import engine as risk
 from albsat.risk.limits import SPECS, LimitError, RiskLimits, validate
 from albsat.risk.market import Gate, market_gates
+from albsat.strategy import gosteri
 
 #: Hesap sıfırlamada kullanıcının yazması gereken sözcük.
 RESET_WORD = "SIFIRLA"
@@ -65,6 +66,10 @@ class _Body(BaseModel):
 class ModeBody(_Body):
     sembol: str = Field(min_length=3, max_length=20)
     mod: str = Field(min_length=2, max_length=20)
+
+
+class ShowBody(_Body):
+    acik: bool
 
 
 class LimitsBody(_Body):
@@ -114,6 +119,8 @@ def usdt(value: Decimal | str | None, places: Decimal = CENT) -> str | None:
 
 
 def _source_tr(kaynak: str) -> str:
+    if kaynak == risk.SOURCE_SHOW:
+        return "Gösteri"
     return "Kural" if kaynak == risk.SOURCE_RULE else "Elle"
 
 
@@ -397,6 +404,13 @@ def register(app: FastAPI, get_runtime: Callable[[], Runtime | None]) -> None:
             for item in runtime.engine.modes.all()
         ]
 
+    def gosteri_json(runtime: Runtime) -> dict[str, Any]:
+        return {
+            "acik": runtime.engine.ledger.get_state(gosteri.STATE_ENABLED) == "1",
+            "periyot": gosteri.PERIOD,
+            "aciklama": gosteri.NOTE,
+        }
+
     # --- okuma ------------------------------------------------------------------
 
     @app.get("/api/kagit/durum")
@@ -449,7 +463,9 @@ def register(app: FastAPI, get_runtime: Callable[[], Runtime | None]) -> None:
             "ozet": {
                 "kural": summary_json(report.summarize(orders, risk.SOURCE_RULE)),
                 "elle": summary_json(report.summarize(orders, risk.SOURCE_MANUAL)),
+                "gosteri": summary_json(report.summarize(orders, risk.SOURCE_SHOW)),
             },
+            "gosteri": gosteri_json(runtime),
             "durdurulan_kurallar": sorted(disabled),
             "kural_performansi": checks,
             "canliya_gecis": [
@@ -589,6 +605,21 @@ def register(app: FastAPI, get_runtime: Callable[[], Runtime | None]) -> None:
         except ModeError as error:
             raise HTTPException(400, str(error)) from None
         return {"eski": old, "yeni": new, "modlar": modes_json(runtime)}
+
+    @app.post("/api/kagit/gosteri")
+    def kagit_gosteri(body: ShowBody) -> dict[str, Any]:
+        """Gösteri botunu açar ya da kapatır. Yalnızca kâğıt işlemi etkiler."""
+        runtime = rt()
+        engine = runtime.engine
+        with engine.lock:
+            before = engine.ledger.get_state(gosteri.STATE_ENABLED) == "1"
+            if before != body.acik:
+                engine.ledger.set_state(gosteri.STATE_ENABLED, "1" if body.acik else "0")
+                text = ("Gösteri botu açıldı (yalnızca kâğıt işlem, kural değil)."
+                        if body.acik else "Gösteri botu kapatıldı.")
+                engine.audit.write("gosteri_botu", text, kaynak=SOURCE_UI)
+                engine.notifier.send(f"ℹ️ {text}", kind=KIND_MODE)
+        return {"gosteri": gosteri_json(runtime)}
 
     @app.post("/api/kagit/limitler")
     def kagit_limitler_yaz(body: LimitsBody) -> dict[str, Any]:

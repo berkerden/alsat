@@ -61,8 +61,8 @@ from albsat.modes.state import LIVE_MODES, MODE_DEMO, MODE_OFF, MODE_PAPER
 from albsat.notify.base import KIND_CONNECTION, KIND_SIGNAL, KIND_SYSTEM, Notifier
 from albsat.paper.engine import OrderMeta, PaperEngine
 from albsat.paper.fills import Candle
-from albsat.risk.engine import SOURCE_RULE, OrderIntent
-from albsat.strategy import trend_status
+from albsat.risk.engine import SOURCE_RULE, SOURCE_SHOW, OrderIntent
+from albsat.strategy import gosteri, trend_status
 from albsat.strategy.card import SignalCard
 from albsat.strategy.journal import SignalJournal
 from albsat.strategy.rules import Rule, RuleSet, RuleStoreError
@@ -324,6 +324,11 @@ class LiveRunner:
         if not frame.empty:
             self.store.upsert(frame, symbol=sembol, interval=periyot)
         self.evaluate_signals(sembol, periyot)
+        try:
+            self.gosteri_step(sembol, periyot)
+        except Exception as error:  # noqa: BLE001 - gösteri botu döngüyü durdurmasın
+            logger.exception("Gösteri botu adımı başarısız")
+            self.health.note(f"{sembol} gösteri botu: {type(error).__name__}")
 
     # --- REST ile tamamlama --------------------------------------------------
 
@@ -735,6 +740,67 @@ class LiveRunner:
                 f"ℹ️ {card.sembol} sinyali için kâğıt emir açılmadı.\n{decision.ozet_tr}",
                 kind=KIND_SIGNAL,
             )
+
+    # --- gösteri botu (kural değil; yalnızca kâğıt) --------------------------------
+
+    def gosteri_enabled(self) -> bool:
+        return self.engine.ledger.get_state(gosteri.STATE_ENABLED) == "1"
+
+    def gosteri_step(self, sembol: str, periyot: str) -> bool:
+        """Gösteri botunun (``strategy.gosteri``) kâğıt emri. Açıldıysa ``True``.
+
+        Yalnızca Kâğıt İşlem modundaki coinde ve yalnızca kâğıt motoruna yazar;
+        Demo ve canlı yürütücülere giden bir yol yoktur.
+        """
+        if periyot != gosteri.PERIOD or not self.gosteri_enabled():
+            return False
+        if self.engine.modes.get(sembol) != MODE_PAPER:
+            return False
+        if any(item.kaynak == SOURCE_SHOW for item in self.engine.ledger.active()):
+            return False
+        now = self.clock()
+        frame = closed_only(self.store.read(sembol, periyot))
+        found = gosteri.signal(frame, step_ms=interval_ms(periyot))
+        if found is None:
+            return False
+        key = gosteri.STATE_LAST_CANDLE + sembol
+        if self.engine.ledger.get_state(key) == str(found.open_time_ms):
+            return False
+        if (to_ms(now) - found.close_time_ms) / 1000 > SIGNAL_MAX_AGE_SECONDS:
+            return False
+        rules = self.symbol_rules(sembol)
+        if rules is None:
+            self.health.note(f"{sembol} gösteri botu: borsa kuralları yok, emir açılmadı")
+            return False
+        self.engine.ledger.set_state(key, str(found.open_time_ms))
+        entry = found.close
+        notes = [gosteri.NOTE]
+        reprice = 0
+        quote = self.market.quote(sembol)
+        if quote is not None and entry >= quote.satis:
+            entry = quote.alis
+            reprice = 1
+            notes.append(f"Giriş en iyi satışın ({quote.satis}) üstünde kaldığı için en iyi "
+                         f"alışa ({quote.alis}) yazıldı.")
+        atr_pct, _ = self.market.atr(sembol, periyot)
+        planned = gosteri.plan(entry, atr_pct, rules)
+        if planned is None:
+            return False
+        intent = OrderIntent(sembol=sembol, periyot=periyot, giris=planned.giris,
+                             hedef=planned.hedef, stop=planned.stop, kaynak=SOURCE_SHOW)
+        meta = OrderMeta(
+            kural_etiketi=gosteri.LABEL,
+            sinyal_mumu_utc=iso(from_ms(found.close_time_ms)),
+            gecerlilik_mum=gosteri.VALID_CANDLES,
+            azami_tutma_mum=gosteri.HOLD_CANDLES,
+            yeniden_fiyatlama=reprice,
+            notlar=tuple(notes),
+        )
+        _, order = self.engine.place(
+            intent, market=self.market.market_state(sembol, periyot, rules), now=now,
+            meta=meta, source=SOURCE_LOOP, best_ask=None if quote is None else quote.satis,
+        )
+        return order is not None
 
     # --- dışarıya ----------------------------------------------------------------
 

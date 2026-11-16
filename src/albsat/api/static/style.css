@@ -268,3 +268,8 @@ td.sol, .bildirim-metin { text-align: left; }
 .trend-baslik { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
 .trend-baslik h2 { margin: 0; }
 .trend-kutu .alanlar { margin: 10px 0 6px; }
+
+/* Gösteri botu kutusu (Kâğıt işlem > Modlar) */
+.gosteri-kutu { margin-top: 14px; padding: 12px 14px; border: 1px solid rgba(210,153,34,.45); border-radius: 8px; }
+.gosteri-kutu h3 { margin: 0 0 6px; }
+.gosteri-kutu button { margin-top: 8px; }
